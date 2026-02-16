@@ -3,7 +3,8 @@ import socket  # noqa: F401
 from app.logging import logger
 
 class Errors:
-    CODE: int = 35
+    NO_ERROR: int = 0
+    UNSUPPORTED_VERSION: int = 35
 
 
 class WireProtocol:
@@ -13,6 +14,7 @@ class WireProtocol:
     CORRRELATION_ID = 4
     REQUEST_API_KEY = 2
     REQUEST_API_VERSION = 2
+    TIME = 4
 
     @staticmethod
     def message_size(size: int) -> bytes:
@@ -40,6 +42,18 @@ class WireProtocol:
     def get_request_api_version(number:int) -> bytes:
         return number.to_bytes(WireProtocol.REQUEST_API_VERSION, 'big')
     
+    @staticmethod
+    def get_api_key_array_length(number: int) -> bytes:
+        return number.to_bytes(1, 'big')
+    
+    @staticmethod
+    def get_buffer(number: int) -> bytes:
+        return number.to_bytes(1, 'big')
+    
+    @staticmethod
+    def get_time(number: int) -> bytes:
+        return number.to_bytes(WireProtocol.TIME, 'big')
+    
 
 def main():
     print("Logs from your program will appear here!")
@@ -63,13 +77,28 @@ def main():
 
         correlation_id = socket_obj.recv(WireProtocol.CORRRELATION_ID)
         logger.info("Message received: {}", int.from_bytes(correlation_id, "big"))
-               
+        
+        body = socket_obj.recv(int.from_bytes(message_size, "big"))
+        logger.info("Message received: {}", body)
+            
         logger.info("Sending response to client")
         
-        socket_obj.send(message_size)
-        socket_obj.send(correlation_id)
-        # 2 bytes is the size for the error 
-        socket_obj.send(Errors.CODE.to_bytes(2, 'big'))
+        if int.from_bytes(api_key, "big") == 18 and int.from_bytes(api_version, "big") <= 4: # ApiVersions
+            socket_obj.send(WireProtocol.message_size(19)) # Message size, need to add calculation logic
+            socket_obj.send(correlation_id)  # Correlation Id
+            socket_obj.send(Errors.NO_ERROR.to_bytes(2, 'big')) # Error
+            socket_obj.send(WireProtocol.get_api_key_array_length(2))
+            socket_obj.send(api_key)
+            socket_obj.send(WireProtocol.get_request_api_key(0)) # Min version
+            socket_obj.send(WireProtocol.get_request_api_key(4)) # Max version
+            socket_obj.send(WireProtocol.get_buffer(0))
+            socket_obj.send(WireProtocol.get_time(0))
+            socket_obj.send(WireProtocol.get_buffer(0))    
+        else:
+            socket_obj.send(WireProtocol.message_size(6)) # Message size
+            socket_obj.send(correlation_id)
+            # 2 bytes is the size for the error 
+            socket_obj.send(Errors.UNSUPPORTED_VERSION.to_bytes(2, 'big'))
         socket_obj.close()
         logger.info("Connection to client closed")
     
