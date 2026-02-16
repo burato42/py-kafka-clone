@@ -2,6 +2,9 @@ import socket  # noqa: F401
 
 from app.logging import logger
 
+class Errors:
+    CODE: int = 35
+
 
 class WireProtocol:
     # TODO This implementation does't make sense, improve when the implementation is clear
@@ -65,6 +68,7 @@ def main():
         
         socket_obj.send(message_size)
         socket_obj.send(correlation_id)
+        socket_obj.send(Errors.CODE.to_bytes(2, 'big'))
         socket_obj.close()
         logger.info("Connection to client closed")
     
