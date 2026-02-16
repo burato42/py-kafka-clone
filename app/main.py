@@ -68,6 +68,7 @@ def main():
         
         socket_obj.send(message_size)
         socket_obj.send(correlation_id)
+        # 2 bytes is the size for the error 
         socket_obj.send(Errors.CODE.to_bytes(2, 'big'))
         socket_obj.close()
         logger.info("Connection to client closed")
