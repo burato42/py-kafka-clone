@@ -19,52 +19,15 @@ class Errors:
 
 
 class WireProtocol:
-    # TODO This implementation does't make sense, improve when the implementation is clear
-    # 4 bytes is the size of the message in the protocol
+    # Byte size sonstants
     MESSAGE_SIZE_BYTES = 4
     CORRRELATION_ID_BYTES = 4
     REQUEST_API_KEY_BYTES = 2
     REQUEST_API_VERSION_BYTES = 2
     TIME_BYTES = 4
     LENGTH_BYTES = 1
-
-    @staticmethod
-    def message_size(size: int) -> bytes:
-        return size.to_bytes(WireProtocol.MESSAGE_SIZE_BYTES, 'big')
-
-    @staticmethod
-    def response_header_v0(number: int) -> bytes:
-        return number.to_bytes(WireProtocol.MESSAGE_SIZE_BYTES, 'big')
-
-    @staticmethod
-    def response_header_v2(number: int) -> bytes:
-        response: bytes = b""
-        response += number.to_bytes(WireProtocol.MESSAGE_SIZE_BYTES, 'big')
-        return response
-
-    @staticmethod
-    def get_correlation_id(number: int) -> bytes:
-        return number.to_bytes(WireProtocol.CORRRELATION_ID_BYTES, 'big')
-
-    @staticmethod
-    def get_request_api_key(number: int) -> bytes:
-        return number.to_bytes(WireProtocol.REQUEST_API_KEY_BYTES, 'big')
-
-    @staticmethod
-    def get_request_api_version(number: int) -> bytes:
-        return number.to_bytes(WireProtocol.REQUEST_API_VERSION_BYTES, 'big')
-
-    @staticmethod
-    def get_api_key_array_length(number: int) -> bytes:
-        return number.to_bytes(1, 'big')
-
-    @staticmethod
-    def get_buffer(number: int) -> bytes:
-        return number.to_bytes(1, 'big')
-
-    @staticmethod
-    def get_time(number: int) -> bytes:
-        return number.to_bytes(WireProtocol.TIME_BYTES, 'big')
+    TAG_BUFFER_BYTES = 1
+    ERROR_BYTES = 2
 
 
 class Reader:
@@ -135,7 +98,7 @@ class RequestHeader:
         self.tag_buffer = tag_buffer
 
 
-class RequestBody:
+class ApiVersionRequestBody:
     def __init__(
             self,
             client_id: bytes,
@@ -164,7 +127,72 @@ class ApiVersionRequest(ApiRequest):
         client_software_version_size_raw = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES)
         client_software_version_raw = self.buffer.read_bytes(bytes_to_int(client_software_version_size_raw))
         tag_buffer_raw = self.buffer.read_bytes(1)
-        return RequestBody(client_id_raw, client_software_version_raw, tag_buffer_raw)
+        return ApiVersionRequestBody(client_id_raw, client_software_version_raw, tag_buffer_raw)
+
+
+class ResponseHeader:
+    def __init__(
+            self,
+            correlation_id: bytes
+    ):
+        self.correlation_id = correlation_id
+
+    def get_bytes(self):
+        return self.correlation_id
+
+
+class ApiVersion:
+    def __init__(
+            self,
+            api_key: bytes,
+            min_version: bytes,
+            max_version: bytes,
+            tag_buffer: bytes
+    ):
+        self.api_key = api_key
+        self.min_version = min_version
+        self.max_version = max_version
+        self.tag_buffer = tag_buffer
+
+    def get_bytes(self) -> bytes:
+        return self.api_key + self.min_version + self.max_version + self.tag_buffer
+
+
+class ApiVersionResponseBody:
+    def __init__(
+            self,
+            error: bytes,
+            api_versions: list[ApiVersion],
+            throttle_time: bytes,
+            tag_buffer: bytes
+    ):
+        self.error = error
+        self.api_versions = api_versions
+        self.throttle_time = throttle_time
+        self.tag_buffer = tag_buffer
+
+    def get_bytes(self) -> bytes:
+        response = self.error + int_to_bytes(len(self.api_versions) + 1, WireProtocol.LENGTH_BYTES)
+        for api_version in self.api_versions:
+            response += api_version.get_bytes()
+        response += self.throttle_time + self.tag_buffer
+        return response
+
+
+class ApiVersionRespons(ApiResponse):
+    def __init__(
+            self,
+            header: ResponseHeader,
+            body: ApiVersionResponseBody
+    ):
+        self.header = header
+        self.body = body
+
+    def get_bytes(self) -> bytes:
+        return self.header.get_bytes() + self.body.get_bytes()
+
+    def get_size(self) -> int:
+        return len(self.get_bytes())
 
 
 APIKEYS: dict[int, type[ApiRequest]] = {
@@ -193,21 +221,35 @@ def main():
             header: RequestHeader = request.get_header()
             correlation_id = header.correlation_id
             if 4 >= bytes_to_int(header.api_version) >= 0:
-                socket_obj.send(WireProtocol.message_size(19))  # Message size, need to add calculation logic
-                socket_obj.send(correlation_id)  # Correlation Id
-                socket_obj.send(Errors.NO_ERROR.to_bytes(2, 'big'))  # Error
-                socket_obj.send(WireProtocol.get_api_key_array_length(2))
-                socket_obj.send(header.api_key)
-                socket_obj.send(WireProtocol.get_request_api_key(0))  # Min version
-                socket_obj.send(WireProtocol.get_request_api_key(4))  # Max version
-                socket_obj.send(WireProtocol.get_buffer(0))
-                socket_obj.send(WireProtocol.get_time(0))
-                socket_obj.send(WireProtocol.get_buffer(0))
+                payload = ApiVersionRespons(
+                    ResponseHeader(correlation_id),
+                    ApiVersionResponseBody(
+                        int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                        [ApiVersion(
+                            raw_api_key,
+                            int_to_bytes(0, WireProtocol.REQUEST_API_VERSION_BYTES),
+                            int_to_bytes(4, WireProtocol.REQUEST_API_VERSION_BYTES),
+                            int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                        )],
+                        int_to_bytes(0, WireProtocol.TIME_BYTES),
+                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
+                    )
+                )
+                socket_obj.send(int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES))
+                socket_obj.send(payload.get_bytes())
             else:
-                socket_obj.send(WireProtocol.message_size(6))  # Message size
-                socket_obj.send(correlation_id)
-                # 2 bytes is the size for the error 
-                socket_obj.send(Errors.UNSUPPORTED_VERSION.to_bytes(2, 'big'))
+                payload = ApiVersionRespons(
+                    ResponseHeader(correlation_id),
+                    ApiVersionResponseBody(
+                        int_to_bytes(Errors.UNSUPPORTED_VERSION, WireProtocol.ERROR_BYTES),
+                        [],
+                        int_to_bytes(0, WireProtocol.TIME_BYTES),
+                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
+                    )
+                )
+                socket_obj.send(int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES))
+                socket_obj.send(payload.get_bytes())
+
         else:
             logger.info("Unknown API key {}", api_key)
         socket_obj.close()
