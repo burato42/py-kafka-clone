@@ -1,4 +1,5 @@
 import socket  # noqa: F401
+import threading
 from abc import abstractmethod
 from typing import Protocol
 
@@ -202,6 +203,72 @@ APIKEYS: dict[int, type[ApiRequest]] = {
 }
 
 
+def handle_client(socket_obj: socket.socket, details: tuple):
+    logger.info("Connection accepted from {}", details)
+
+    try:
+        while True:
+            reader = Reader(socket_obj)
+            try:
+                size, payload = reader.read_full_message()
+            except EOFError:
+                logger.info("Client {} closed the connection.", details)
+                break
+
+            buffer = Buffer(size, payload)
+            process_request(socket_obj, buffer)
+
+    except Exception as e:
+        logger.error("Error handling client {}: {}", details, e)
+    finally:
+        socket_obj.close()
+        logger.info("Connection to {} closed", details)
+
+
+def process_request(socket_obj: socket.socket, buffer: Buffer):
+    raw_api_key = buffer.peek_bytes(WireProtocol.REQUEST_API_KEY_BYTES)
+
+    if (api_key := bytes_to_int(raw_api_key)) in APIKEYS:
+        logger.info("Request API key: {}; Request type: {}", api_key, APIKEYS[api_key])
+        kls = APIKEYS[api_key]
+        request = kls(buffer)
+        header: RequestHeader = request.get_header()
+        correlation_id = header.correlation_id
+        if 4 >= bytes_to_int(header.api_version) >= 0:
+            payload = ApiVersionRespons(
+                ResponseHeader(correlation_id),
+                ApiVersionResponseBody(
+                    int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                    [ApiVersion(
+                        raw_api_key,
+                        int_to_bytes(0, WireProtocol.REQUEST_API_VERSION_BYTES),
+                        int_to_bytes(4, WireProtocol.REQUEST_API_VERSION_BYTES),
+                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                    )],
+                    int_to_bytes(0, WireProtocol.TIME_BYTES),
+                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
+                )
+            )
+            socket_obj.sendall(
+                int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES) + payload.get_bytes()
+            )
+        else:
+            payload = ApiVersionRespons(
+                ResponseHeader(correlation_id),
+                ApiVersionResponseBody(
+                    int_to_bytes(Errors.UNSUPPORTED_VERSION, WireProtocol.ERROR_BYTES),
+                    [],
+                    int_to_bytes(0, WireProtocol.TIME_BYTES),
+                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
+                )
+            )
+            socket_obj.sendall(
+                int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES) + payload.get_bytes()
+            )
+    else:
+        logger.info("Unknown API key {}", api_key)
+        
+        
 def main():
     print("Logs from your program will appear here!")
 
@@ -213,51 +280,12 @@ def main():
         socket_obj, details = server.accept()
         logger.info("Connection accepted...client details: {}", details)
 
-        reader = Reader(socket_obj)
-        buffer = Buffer(*reader.read_full_message())
-        raw_api_key = buffer.peek_bytes(WireProtocol.REQUEST_API_KEY_BYTES)
-
-        if (api_key := bytes_to_int(raw_api_key)) in APIKEYS:
-            logger.info("Request API key: {}; Request type: {}", api_key, APIKEYS[api_key])
-            kls = APIKEYS[api_key]
-            request = kls(buffer)
-            header: RequestHeader = request.get_header()
-            correlation_id = header.correlation_id
-            if 4 >= bytes_to_int(header.api_version) >= 0:
-                payload = ApiVersionRespons(
-                    ResponseHeader(correlation_id),
-                    ApiVersionResponseBody(
-                        int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
-                        [ApiVersion(
-                            raw_api_key,
-                            int_to_bytes(0, WireProtocol.REQUEST_API_VERSION_BYTES),
-                            int_to_bytes(4, WireProtocol.REQUEST_API_VERSION_BYTES),
-                            int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-                        )],
-                        int_to_bytes(0, WireProtocol.TIME_BYTES),
-                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
-                    )
-                )
-                # TODO Use sendall instead of send
-                socket_obj.send(int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES))
-                socket_obj.send(payload.get_bytes())
-            else:
-                payload = ApiVersionRespons(
-                    ResponseHeader(correlation_id),
-                    ApiVersionResponseBody(
-                        int_to_bytes(Errors.UNSUPPORTED_VERSION, WireProtocol.ERROR_BYTES),
-                        [],
-                        int_to_bytes(0, WireProtocol.TIME_BYTES),
-                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
-                    )
-                )
-                socket_obj.send(int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES))
-                socket_obj.send(payload.get_bytes())
-
-        else:
-            logger.info("Unknown API key {}", api_key)
-        socket_obj.close()
-        logger.info("Connection to client closed")
+        client_thread = threading.Thread(
+            target=handle_client,
+            args=(socket_obj, details),
+            daemon=True
+        )
+        client_thread.start()
 
 
 if __name__ == "__main__":
