@@ -172,6 +172,8 @@ class ApiVersionResponseBody:
         self.tag_buffer = tag_buffer
 
     def get_bytes(self) -> bytes:
+        # TODO Use Bytes.IO for better performance
+        # TODO Must be a wrong type for api versions list
         response = self.error + int_to_bytes(len(self.api_versions) + 1, WireProtocol.LENGTH_BYTES)
         for api_version in self.api_versions:
             response += api_version.get_bytes()
@@ -205,7 +207,8 @@ def main():
 
     server = socket.create_server(("localhost", 9092), reuse_port=True)
     server.listen()
-
+    
+    # TODO Add concurrency
     while True:
         socket_obj, details = server.accept()
         logger.info("Connection accepted...client details: {}", details)
@@ -235,6 +238,7 @@ def main():
                         int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
                     )
                 )
+                # TODO Use sendall instead of send
                 socket_obj.send(int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES))
                 socket_obj.send(payload.get_bytes())
             else:
