@@ -1,21 +1,7 @@
 from app.messages import ApiResponse, ApiRequest
+from app.messages.api_key import ApiKey
+from app.messages.headers import ResponseHeader, RequestHeader
 from app.protocol import WireProtocol, int_to_bytes, bytes_to_int
-
-
-class RequestHeader:
-    def __init__(
-        self,
-        api_key: bytes,
-        api_version: bytes,
-        correlation_id: bytes,
-        client_id: bytes,
-        tag_buffer: bytes,
-    ):
-        self.api_key = api_key
-        self.api_version = api_version
-        self.correlation_id = correlation_id
-        self.client_id = client_id
-        self.tag_buffer = tag_buffer
 
 
 class ApiVersionRequestBody:
@@ -60,37 +46,16 @@ class ApiVersionRequest(ApiRequest):
         )
 
 
-class ResponseHeader:
-    def __init__(self, correlation_id: bytes):
-        self.correlation_id = correlation_id
-
-    def get_bytes(self):
-        return self.correlation_id
-
-
-class ApiVersion:
-    def __init__(
-        self, api_key: bytes, min_version: bytes, max_version: bytes, tag_buffer: bytes
-    ):
-        self.api_key = api_key
-        self.min_version = min_version
-        self.max_version = max_version
-        self.tag_buffer = tag_buffer
-
-    def get_bytes(self) -> bytes:
-        return self.api_key + self.min_version + self.max_version + self.tag_buffer
-
-
 class ApiVersionResponseBody:
     def __init__(
         self,
         error: bytes,
-        api_versions: list[ApiVersion],
+        api_keys: list[ApiKey],
         throttle_time: bytes,
         tag_buffer: bytes,
     ):
         self.error = error
-        self.api_versions = api_versions
+        self.api_keys = api_keys
         self.throttle_time = throttle_time
         self.tag_buffer = tag_buffer
 
@@ -98,9 +63,9 @@ class ApiVersionResponseBody:
         # TODO Use Bytes.IO for better performance
         # TODO Must be a wrong type for api versions list
         response = self.error + int_to_bytes(
-            len(self.api_versions) + 1, WireProtocol.LENGTH_BYTES
+            len(self.api_keys) + 1, WireProtocol.LENGTH_BYTES
         )
-        for api_version in self.api_versions:
+        for api_version in self.api_keys:
             response += api_version.get_bytes()
         response += self.throttle_time + self.tag_buffer
         return response

@@ -1,15 +1,14 @@
-import socket  # noqa: F401
+import socket
 import threading
 
 from app.connection import Reader, Buffer
 from app.logging import logger
 from app.messages.api_version import (
-    RequestHeader,
     ApiVersionRespons,
-    ResponseHeader,
     ApiVersionResponseBody,
-    ApiVersion,
 )
+from app.messages.api_key import api_version_key, describe_topic_partiition_key
+from app.messages.headers import RequestHeader, ResponseHeader
 from app.messages.mapping import APIKEYS
 from app.protocol import WireProtocol, Errors, bytes_to_int, int_to_bytes
 
@@ -51,12 +50,8 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
                 ApiVersionResponseBody(
                     int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
                     [
-                        ApiVersion(
-                            raw_api_key,
-                            int_to_bytes(0, WireProtocol.REQUEST_API_VERSION_BYTES),
-                            int_to_bytes(4, WireProtocol.REQUEST_API_VERSION_BYTES),
-                            int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-                        )
+                        api_version_key,
+                        describe_topic_partiition_key
                     ],
                     int_to_bytes(0, WireProtocol.TIME_BYTES),
                     int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
