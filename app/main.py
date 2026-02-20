@@ -101,7 +101,7 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
                         int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
                     )
                 ],
-                int_to_bytes_signed(-1, WireProtocol.CURSOR_BYTES),           
+                None,           
                 int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
             )    
         )

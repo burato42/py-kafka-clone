@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from app.messages import ApiRequest, ApiResponse
 from app.messages.headers import ResponseHeaderV1
-from app.protocol import WireProtocol, bytes_to_int, int_to_bytes
+from app.protocol import WireProtocol, bytes_to_int, int_to_bytes, int_to_bytes_signed
 
 
 class DescribeTopicPartitionsRequest(ApiRequest):
@@ -101,7 +101,7 @@ class DescribeTopicPartitionResponseBody:
         self,
         throttle_time: bytes,
         topics_array: list[Topic],
-        next_cursor: bytes,
+        next_cursor: Optional[bytes],
         tag_buffer: bytes
     ):
         self.throttle_time = throttle_time
@@ -115,7 +115,11 @@ class DescribeTopicPartitionResponseBody:
         )
         for topic in self.topics_array:
             result += topic.get_bytes()
-        result += self.next_cursor + self.tag_buffer
+        if not self.next_cursor:
+            result += int_to_bytes_signed(-1, WireProtocol.CURSOR_BYTES)
+        else:
+            result += int_to_bytes_signed(1, WireProtocol.CURSOR_BYTES) + self.next_cursor
+        result += self.tag_buffer
         return result
 
 
