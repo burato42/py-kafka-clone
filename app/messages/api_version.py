@@ -1,6 +1,6 @@
 from app.messages import ApiResponse, ApiRequest
 from app.messages.api_key import ApiKey
-from app.messages.headers import ResponseHeader, RequestHeader
+from app.messages.headers import ResponseHeaderV0, RequestHeaderV2
 from app.protocol import WireProtocol, int_to_bytes, bytes_to_int
 
 
@@ -14,23 +14,10 @@ class ApiVersionRequestBody:
 
 
 class ApiVersionRequest(ApiRequest):
+    
     def get_header(self):
-        api_key_raw = self.buffer.read_bytes(WireProtocol.REQUEST_API_KEY_BYTES)
-        api_version_raw = self.buffer.read_bytes(WireProtocol.REQUEST_API_VERSION_BYTES)
-        correlation_id_raw = self.buffer.read_bytes(WireProtocol.CORRRELATION_ID_BYTES)
-        client_id_size_raw = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES)
-        client_id_raw = self.buffer.read_bytes(bytes_to_int(client_id_size_raw))
-        tag_buffer_raw = self.buffer.read_bytes(
-            1
-        )  # just one byte here, not sure about other messages
-        return RequestHeader(
-            api_key_raw,
-            api_version_raw,
-            correlation_id_raw,
-            client_id_raw,
-            tag_buffer_raw,
-        )
-
+        return self.get_header_v2()
+    
     def get_body(self):
         client_id_size_raw = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES)
         client_id_raw = self.buffer.read_bytes(bytes_to_int(client_id_size_raw))
@@ -60,8 +47,8 @@ class ApiVersionResponseBody:
         self.tag_buffer = tag_buffer
 
     def get_bytes(self) -> bytes:
-        # TODO Use Bytes.IO for better performance
-        # TODO Must be a wrong type for api versions list
+        # TODO Use BytesIO for better performance (An improvement to test)
+        # TODO Must be a wrong type for api versions list, we need to check the size dynamically
         response = self.error + int_to_bytes(
             len(self.api_keys) + 1, WireProtocol.LENGTH_BYTES
         )
@@ -71,13 +58,8 @@ class ApiVersionResponseBody:
         return response
 
 
-class ApiVersionRespons(ApiResponse):
-    def __init__(self, header: ResponseHeader, body: ApiVersionResponseBody):
+class ApiVersionResponse(ApiResponse):
+    def __init__(self, header: ResponseHeaderV0, body: ApiVersionResponseBody):
         self.header = header
         self.body = body
 
-    def get_bytes(self) -> bytes:
-        return self.header.get_bytes() + self.body.get_bytes()
-
-    def get_size(self) -> int:
-        return len(self.get_bytes())

@@ -1,4 +1,4 @@
-class ResponseHeader:
+class ResponseHeaderV0:
     def __init__(self, correlation_id: bytes):
         self.correlation_id = correlation_id
 
@@ -6,7 +6,16 @@ class ResponseHeader:
         return self.correlation_id
 
 
-class RequestHeader:
+class ResponseHeaderV1:
+    def __init__(self, correlation_id: bytes, tag_buffer: bytes):
+        self.correlation_id = correlation_id
+        self.tag_buffer = tag_buffer
+
+    def get_bytes(self):
+        return b"".join([self.correlation_id, self.tag_buffer])
+
+
+class RequestHeaderV2:
     def __init__(
         self,
         api_key: bytes,
@@ -20,3 +29,10 @@ class RequestHeader:
         self.correlation_id = correlation_id
         self.client_id = client_id
         self.tag_buffer = tag_buffer
+        
+    def get_bytes(self) -> bytes:
+        return b"".join(
+            [
+                self.api_key, self.api_version, self.correlation_id, self.client_id, self.tag_buffer
+            ]
+        )

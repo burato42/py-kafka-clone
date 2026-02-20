@@ -4,13 +4,15 @@ import threading
 from app.connection import Reader, Buffer
 from app.logging import logger
 from app.messages.api_version import (
-    ApiVersionRespons,
+    ApiVersionResponse,
     ApiVersionResponseBody,
 )
-from app.messages.api_key import api_version_key, describe_topic_partiition_key
-from app.messages.headers import RequestHeader, ResponseHeader
+from app.messages.api_key import api_version_key, describe_topic_partiition_key, ApiKeyConstants
+from app.messages.describe_topic_part import DescribeTopicPartitionsResponse, DescribeTopicPartitionResponseBody, Topic, \
+    TopicName
+from app.messages.headers import RequestHeaderV2, ResponseHeaderV0, ResponseHeaderV1
 from app.messages.mapping import APIKEYS
-from app.protocol import WireProtocol, Errors, bytes_to_int, int_to_bytes
+from app.protocol import WireProtocol, Errors, bytes_to_int, int_to_bytes, int_to_bytes_signed
 
 
 def handle_client(socket_obj: socket.socket, details: tuple):
@@ -38,45 +40,75 @@ def handle_client(socket_obj: socket.socket, details: tuple):
 def process_request(socket_obj: socket.socket, buffer: Buffer):
     raw_api_key = buffer.peek_bytes(WireProtocol.REQUEST_API_KEY_BYTES)
 
-    if (api_key := bytes_to_int(raw_api_key)) in APIKEYS:
-        logger.info("Request API key: {}; Request type: {}", api_key, APIKEYS[api_key])
-        kls = APIKEYS[api_key]
-        request = kls(buffer)
-        header: RequestHeader = request.get_header()
-        correlation_id = header.correlation_id
-        if 4 >= bytes_to_int(header.api_version) >= 0:
-            payload = ApiVersionRespons(
-                ResponseHeader(correlation_id),
-                ApiVersionResponseBody(
-                    int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
-                    [
-                        api_version_key,
-                        describe_topic_partiition_key
-                    ],
-                    int_to_bytes(0, WireProtocol.TIME_BYTES),
-                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-                ),
-            )
-            socket_obj.sendall(
-                int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES)
-                + payload.get_bytes()
-            )
-        else:
-            payload = ApiVersionRespons(
-                ResponseHeader(correlation_id),
-                ApiVersionResponseBody(
-                    int_to_bytes(Errors.UNSUPPORTED_VERSION, WireProtocol.ERROR_BYTES),
-                    [],
-                    int_to_bytes(0, WireProtocol.TIME_BYTES),
-                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-                ),
-            )
-            socket_obj.sendall(
-                int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES)
-                + payload.get_bytes()
-            )
-    else:
-        logger.info("Unknown API key {}", api_key)
+    api_key = bytes_to_int(raw_api_key)
+    
+    if api_key not in APIKEYS:
+        logger.error("Unknown API key {}", api_key)
+        return
+    
+    logger.info("Request API key: {}; Request type: {}", api_key, APIKEYS[api_key])
+    kls = APIKEYS[api_key]
+    request = kls(buffer)
+    header: RequestHeaderV2 = request.get_header()
+    correlation_id = header.correlation_id
+    
+    if api_key == ApiKeyConstants.API_VERSION and 4 >= bytes_to_int(header.api_version) >= 0:
+        payload = ApiVersionResponse(
+            ResponseHeaderV0(correlation_id),
+            ApiVersionResponseBody(
+                int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                [
+                    api_version_key,
+                    describe_topic_partiition_key
+                ],
+                int_to_bytes(0, WireProtocol.TIME_BYTES),
+                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+            ),
+        )
+        socket_obj.sendall(
+            int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES)
+            + payload.get_bytes()
+        )
+    elif api_key == ApiKeyConstants.API_VERSION:
+        payload = ApiVersionResponse(
+            ResponseHeaderV0(correlation_id),
+            ApiVersionResponseBody(
+                int_to_bytes(Errors.UNSUPPORTED_VERSION, WireProtocol.ERROR_BYTES),
+                [],
+                int_to_bytes(0, WireProtocol.TIME_BYTES),
+                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+            ),
+        )
+        socket_obj.sendall(
+            int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES)
+            + payload.get_bytes()
+        )
+    elif api_key == ApiKeyConstants.DESCRIBE_TOPIC_PARTITION:
+        payload = DescribeTopicPartitionsResponse(
+            ResponseHeaderV1(
+                correlation_id, int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
+            ),
+            DescribeTopicPartitionResponseBody(
+                int_to_bytes(0, WireProtocol.TIME_BYTES),
+                [
+                    Topic(
+                        int_to_bytes(Errors.UNKNOWN_TOPIC_OR_PARTITION, WireProtocol.ERROR_BYTES),
+                        TopicName(int_to_bytes(3, WireProtocol.LENGTH_BYTES), b"foo"),
+                        int_to_bytes(0, WireProtocol.TOPIC_ID_BYTES),
+                        int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
+                        [],
+                        int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
+                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
+                    )
+                ],
+                int_to_bytes_signed(-1, WireProtocol.CURSOR_BYTES),           
+                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
+            )    
+        )
+        socket_obj.sendall(
+            int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES)
+            + payload.get_bytes()
+        )
 
 
 def main():

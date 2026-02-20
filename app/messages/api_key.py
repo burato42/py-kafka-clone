@@ -31,3 +31,4 @@ describe_topic_partiition_key = ApiKey(
     int_to_bytes(4, WireProtocol.REQUEST_API_VERSION_BYTES),
     int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
 )
+
