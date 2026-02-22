@@ -1,23 +1,22 @@
+from dataclasses import dataclass
+
 from app.messages import ApiResponse, ApiRequest
 from app.messages.api_key import ApiKey
-from app.messages.headers import ResponseHeaderV0, RequestHeaderV2
+from app.messages.headers import ResponseHeaderV0
 from app.protocol import WireProtocol, int_to_bytes, bytes_to_int
 
 
+@dataclass
 class ApiVersionRequestBody:
-    def __init__(
-        self, client_id: bytes, client_software_version: bytes, tag_buffer: bytes
-    ):
-        self.client_id = client_id
-        self.client_software_version = client_software_version
-        self.tag_buffer = tag_buffer
+    client_id: bytes
+    client_software_version: bytes
+    tag_buffer: bytes
 
 
 class ApiVersionRequest(ApiRequest):
-    
     def get_header(self):
         return self.get_header_v2()
-    
+
     def get_body(self):
         client_id_size_raw = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES)
         client_id_raw = self.buffer.read_bytes(bytes_to_int(client_id_size_raw))
@@ -33,18 +32,12 @@ class ApiVersionRequest(ApiRequest):
         )
 
 
+@dataclass
 class ApiVersionResponseBody:
-    def __init__(
-        self,
-        error: bytes,
-        api_keys: list[ApiKey],
-        throttle_time: bytes,
-        tag_buffer: bytes,
-    ):
-        self.error = error
-        self.api_keys = api_keys
-        self.throttle_time = throttle_time
-        self.tag_buffer = tag_buffer
+    error: bytes
+    api_keys: list[ApiKey]
+    throttle_time: bytes
+    tag_buffer: bytes
 
     def get_bytes(self) -> bytes:
         # TODO Use BytesIO for better performance (An improvement to test)
@@ -58,8 +51,7 @@ class ApiVersionResponseBody:
         return response
 
 
+@dataclass
 class ApiVersionResponse(ApiResponse):
-    def __init__(self, header: ResponseHeaderV0, body: ApiVersionResponseBody):
-        self.header = header
-        self.body = body
-
+    header: ResponseHeaderV0
+    body: ApiVersionResponseBody

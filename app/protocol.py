@@ -19,6 +19,7 @@ class WireProtocol:
     TOPIC_ID_BYTES = 16
     BOOLEAN_BYTES = 1
     TOPIC_AUTH_OPS_BYTES = 4
+    CLIENT_ID_BYTES = 2
 
 
 def bytes_to_int(data: bytes) -> int:
@@ -27,6 +28,7 @@ def bytes_to_int(data: bytes) -> int:
 
 def int_to_bytes(number: int, size: int) -> bytes:
     return number.to_bytes(size, "big")
+
 
 def int_to_bytes_signed(number: int, size: int) -> bytes:
     return number.to_bytes(size, "big", signed=True)

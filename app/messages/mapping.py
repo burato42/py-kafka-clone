@@ -5,5 +5,5 @@ from app.messages.describe_topic_part import DescribeTopicPartitionsRequest
 
 APIKEYS: dict[int, type[ApiRequest]] = {
     ApiKeyConstants.API_VERSION: ApiVersionRequest,
-    ApiKeyConstants.DESCRIBE_TOPIC_PARTITION: DescribeTopicPartitionsRequest
+    ApiKeyConstants.DESCRIBE_TOPIC_PARTITION: DescribeTopicPartitionsRequest,
 }

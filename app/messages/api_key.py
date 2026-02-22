@@ -1,18 +1,19 @@
+from dataclasses import dataclass
+
 from app.protocol import int_to_bytes, WireProtocol
+
 
 class ApiKeyConstants:
     API_VERSION = 18
     DESCRIBE_TOPIC_PARTITION = 75
 
 
+@dataclass
 class ApiKey:
-    def __init__(
-        self, api_key: bytes, min_version: bytes, max_version: bytes, tag_buffer: bytes
-    ):
-        self.api_key = api_key
-        self.min_version = min_version
-        self.max_version = max_version
-        self.tag_buffer = tag_buffer
+    api_key: bytes
+    min_version: bytes
+    max_version: bytes
+    tag_buffer: bytes
 
     def get_bytes(self) -> bytes:
         return self.api_key + self.min_version + self.max_version + self.tag_buffer
@@ -26,9 +27,10 @@ api_version_key = ApiKey(
 )
 
 describe_topic_partiition_key = ApiKey(
-    int_to_bytes(ApiKeyConstants.DESCRIBE_TOPIC_PARTITION, WireProtocol.REQUEST_API_KEY_BYTES),
+    int_to_bytes(
+        ApiKeyConstants.DESCRIBE_TOPIC_PARTITION, WireProtocol.REQUEST_API_KEY_BYTES
+    ),
     int_to_bytes(0, WireProtocol.REQUEST_API_VERSION_BYTES),
     int_to_bytes(4, WireProtocol.REQUEST_API_VERSION_BYTES),
     int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
 )
-

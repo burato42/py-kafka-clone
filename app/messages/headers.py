@@ -29,10 +29,14 @@ class RequestHeaderV2:
         self.correlation_id = correlation_id
         self.client_id = client_id
         self.tag_buffer = tag_buffer
-        
+
     def get_bytes(self) -> bytes:
         return b"".join(
             [
-                self.api_key, self.api_version, self.correlation_id, self.client_id, self.tag_buffer
+                self.api_key,
+                self.api_version,
+                self.correlation_id,
+                self.client_id,
+                self.tag_buffer,
             ]
         )

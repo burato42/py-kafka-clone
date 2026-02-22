@@ -5,20 +5,25 @@ from app.connection import Buffer
 from app.messages.headers import RequestHeaderV2
 from app.protocol import WireProtocol, bytes_to_int
 
-# FIXME The logic of reading bytes to the objects is wrong! We need to do it once on object creation.
+
+# TODO Fix OOP structure which is a messy right now
+
+
 class ApiRequest(Protocol):
     def __init__(self, buffer: Buffer):
         self.buffer = buffer
-    
+        self.header = self.get_header()
+        self.body = self.get_body()
+
     @abstractmethod
     def get_header(self):
         pass
-    
+
     def get_header_v2(self):
         api_key_raw = self.buffer.read_bytes(WireProtocol.REQUEST_API_KEY_BYTES)
         api_version_raw = self.buffer.read_bytes(WireProtocol.REQUEST_API_VERSION_BYTES)
         correlation_id_raw = self.buffer.read_bytes(WireProtocol.CORRRELATION_ID_BYTES)
-        client_id_size_raw = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES)
+        client_id_size_raw = self.buffer.read_bytes(WireProtocol.CLIENT_ID_BYTES)
         client_id_raw = self.buffer.read_bytes(bytes_to_int(client_id_size_raw))
         tag_buffer_raw = self.buffer.read_bytes(WireProtocol.TAG_BUFFER_BYTES)
         return RequestHeaderV2(
@@ -35,7 +40,6 @@ class ApiRequest(Protocol):
 
 
 class ApiResponse(Protocol):
-    
     def get_bytes(self) -> bytes:
         return self.header.get_bytes() + self.body.get_bytes()
 
