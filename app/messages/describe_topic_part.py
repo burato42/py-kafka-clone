@@ -12,15 +12,16 @@ class DescribeTopicPartitionsRequest(ApiRequest):
         return self.get_header_v2()
     
     def get_body(self):
+        # TODO Implement logic for compact arrays
         topic_array_raw_size = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES) # Length of the topic array + 1
         topic_array_size = bytes_to_int(topic_array_raw_size) - 1
         topics = []
         for _ in range(topic_array_size):
-            topic_name_raw_len = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES) # Length of the name + 1
-            topic_name_len = bytes_to_int(topic_name_raw_len) - 1
+            topic_name_raw_len = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES)
+            topic_name_len = bytes_to_int(topic_name_raw_len)
             topic_name = self.buffer.read_bytes(topic_name_len)
             topic_tag_buffer = self.buffer.read_bytes(WireProtocol.TAG_BUFFER_BYTES)
-            topics.append(Topic(topic_name, topic_name, topic_tag_buffer))
+            topics.append(TopicRequest(topic_name, topic_tag_buffer))
         response_part_limit_raw = self.buffer.read_bytes(WireProtocol.RESPONSE_PARTITION_LIMIT_BYTES)
         cursor_raw = self.buffer.read_bytes(WireProtocol.CURSOR_BYTES)
         tag_buffer_raw = self.buffer.read_bytes(WireProtocol.TAG_BUFFER_BYTES)
@@ -32,16 +33,18 @@ class DescribeTopicPartitionsRequest(ApiRequest):
 class TopicRequest:
     def __init__(
         self,
-        name_length: bytes,
         topic_name: bytes,
         tag_buffer: bytes
     ):
-        self.name_length = name_length
         self.topic_name = topic_name
         self.tag_buffer = tag_buffer
         
     def get_bytes(self):
-        return self.name_length + self.topic_name + self.tag_buffer
+        size = len(self.topic_name) # TODO Compact string here, need a genric way for processing
+        return (
+            int_to_bytes(size + 1, WireProtocol.LENGTH_BYTES) +
+            self.topic_name + self.tag_buffer
+        )
     
     
 class DescribeTopicPartitionRequestBody:
@@ -69,11 +72,11 @@ class DescribeTopicPartitionRequestBody:
 
 @dataclass
 class TopicName:
-    length: bytes
     content: bytes
     
     def get_bytes(self):
-        return b"".join([self.length, self.content])
+        size = len(self.content)
+        return b"".join([int_to_bytes(size + 1, WireProtocol.LENGTH_BYTES), self.content])
     
 
 @dataclass
@@ -115,11 +118,7 @@ class DescribeTopicPartitionResponseBody:
         )
         for topic in self.topics_array:
             result += topic.get_bytes()
-        if not self.next_cursor:
-            result += int_to_bytes_signed(-1, WireProtocol.CURSOR_BYTES)
-        else:
-            result += int_to_bytes_signed(1, WireProtocol.CURSOR_BYTES) + self.next_cursor
-        result += self.tag_buffer
+        result += self.next_cursor + self.tag_buffer
         return result
 
 

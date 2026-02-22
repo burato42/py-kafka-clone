@@ -1,4 +1,5 @@
 import socket
+import struct
 import threading
 
 from app.connection import Reader, Buffer
@@ -84,6 +85,9 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
             + payload.get_bytes()
         )
     elif api_key == ApiKeyConstants.DESCRIBE_TOPIC_PARTITION:
+        print("-----------")
+        topic_name = request.get_body().topic_array[0].topic_name
+        print(topic_name)
         payload = DescribeTopicPartitionsResponse(
             ResponseHeaderV1(
                 correlation_id, int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
@@ -93,7 +97,7 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
                 [
                     Topic(
                         int_to_bytes(Errors.UNKNOWN_TOPIC_OR_PARTITION, WireProtocol.ERROR_BYTES),
-                        TopicName(int_to_bytes(3, WireProtocol.LENGTH_BYTES), b"foo"),
+                        TopicName(topic_name),
                         int_to_bytes(0, WireProtocol.TOPIC_ID_BYTES),
                         int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
                         [],
@@ -101,7 +105,7 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
                         int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
                     )
                 ],
-                None,           
+                int_to_bytes_signed(-1, WireProtocol.CURSOR_BYTES),
                 int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
             )    
         )

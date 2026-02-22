@@ -5,7 +5,7 @@ from app.connection import Buffer
 from app.messages.headers import RequestHeaderV2
 from app.protocol import WireProtocol, bytes_to_int
 
-
+# FIXME The logic of reading bytes to the objects is wrong! We need to do it once on object creation.
 class ApiRequest(Protocol):
     def __init__(self, buffer: Buffer):
         self.buffer = buffer
@@ -20,9 +20,7 @@ class ApiRequest(Protocol):
         correlation_id_raw = self.buffer.read_bytes(WireProtocol.CORRRELATION_ID_BYTES)
         client_id_size_raw = self.buffer.read_bytes(WireProtocol.LENGTH_BYTES)
         client_id_raw = self.buffer.read_bytes(bytes_to_int(client_id_size_raw))
-        tag_buffer_raw = self.buffer.read_bytes(
-            1
-        )  # just one byte here, not sure about other messages
+        tag_buffer_raw = self.buffer.read_bytes(WireProtocol.TAG_BUFFER_BYTES)
         return RequestHeaderV2(
             api_key_raw,
             api_version_raw,
