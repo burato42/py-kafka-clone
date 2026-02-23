@@ -1,3 +1,4 @@
+import json
 import socket
 import threading
 
@@ -13,7 +14,7 @@ from app.messages.api_key import (
     ApiKeyConstants,
 )
 from app.messages.describe_topic_part import (
-    DescribeTopicPartitionsResponse,
+    DescribeTopicPartitionsResponseV0,
     DescribeTopicPartitionResponseBody,
     Topic,
     TopicName,
@@ -28,6 +29,10 @@ from app.protocol import (
     int_to_bytes_signed,
 )
 
+
+with open("config/config.json") as config_file:
+    configuration = json.loads(config_file.read())
+    
 
 def handle_client(socket_obj: socket.socket, details: tuple):
     logger.info("Connection accepted from {}", details)
@@ -51,6 +56,7 @@ def handle_client(socket_obj: socket.socket, details: tuple):
         logger.info("Connection to {} closed", details)
 
 
+# TODO Split this function.
 def process_request(socket_obj: socket.socket, buffer: Buffer):
     raw_api_key = buffer.peek_bytes(WireProtocol.REQUEST_API_KEY_BYTES)
 
@@ -98,8 +104,17 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
             + payload.get_bytes()
         )
     elif api_key == ApiKeyConstants.DESCRIBE_TOPIC_PARTITION:
+        # TODO Seems not a good place for this block
+        try:
+            with open(configuration["cluster_metadata_file"], "r") as metadata_file:
+                cluster_metadata = json.loads(metadata_file.read())
+        except (FileNotFoundError, FileExistsError) as e:
+            logger.error("Cannot find or read cluster metadata: {}", e)
+        except Exception as e:
+            logger.error("There is an error during getting cluster metadata: {}", e)
+
         topic_name = request.body.topics_array[0].topic_name
-        payload = DescribeTopicPartitionsResponse(
+        payload = DescribeTopicPartitionsResponseV0(
             ResponseHeaderV1(
                 correlation_id, int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
             ),
@@ -129,7 +144,6 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
 
 
 def main():
-    print("Logs from your program will appear here!")
 
     server = socket.create_server(("localhost", 9092), reuse_port=True)
     server.listen()

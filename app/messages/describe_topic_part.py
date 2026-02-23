@@ -108,6 +108,6 @@ class DescribeTopicPartitionResponseBody:
 
 
 @dataclass
-class DescribeTopicPartitionsResponse(ApiResponse):
+class DescribeTopicPartitionsResponseV0(ApiResponse):
     header: ResponseHeaderV1
     body: DescribeTopicPartitionResponseBody
