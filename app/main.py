@@ -1,6 +1,7 @@
 import json
 import socket
 import threading
+from pprint import pprint
 
 from app.connection import Reader, Buffer
 from app.logging import logger
@@ -13,6 +14,7 @@ from app.messages.api_key import (
     describe_topic_partiition_key,
     ApiKeyConstants,
 )
+from app.messages.cluster_metadata_log import read_cluster_metadata_log
 from app.messages.describe_topic_part import (
     DescribeTopicPartitionsResponseV0,
     DescribeTopicPartitionResponseBody,
@@ -36,7 +38,6 @@ with open("config/config.json") as config_file:
 
 def handle_client(socket_obj: socket.socket, details: tuple):
     logger.info("Connection accepted from {}", details)
-
     try:
         while True:
             reader = Reader(socket_obj)
@@ -106,8 +107,12 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
     elif api_key == ApiKeyConstants.DESCRIBE_TOPIC_PARTITION:
         # TODO Seems not a good place for this block
         try:
-            with open(configuration["cluster_metadata_file"], "r") as metadata_file:
-                cluster_metadata = json.loads(metadata_file.read())
+            with open(configuration["cluster_metadata_file"], "rb") as metadata_file:
+                cluster_metadata = metadata_file.read()
+                metadata_buffer = Buffer(len(cluster_metadata), cluster_metadata)
+                metadata_log = read_cluster_metadata_log(metadata_buffer)
+                pprint(metadata_log)
+                
         except (FileNotFoundError, FileExistsError) as e:
             logger.error("Cannot find or read cluster metadata: {}", e)
         except Exception as e:
@@ -144,7 +149,6 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
 
 
 def main():
-
     server = socket.create_server(("localhost", 9092), reuse_port=True)
     server.listen()
 
