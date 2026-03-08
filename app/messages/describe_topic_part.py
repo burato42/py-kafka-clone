@@ -57,6 +57,48 @@ class TopicName:
             [int_to_bytes(size + 1, WireProtocol.LENGTH_BYTES), self.content]
         )
 
+@dataclass
+class Partition:
+    error_code: bytes
+    partition_id: bytes
+    leader_id: bytes
+    leader_epoch: bytes
+    replicas_array: list[bytes]
+    in_sync_replicas_array: list[bytes]
+    eligible_leader_replicas_array: list[bytes]
+    last_known_elr_array: list[bytes]
+    offline_replicas_array: list[bytes] 
+    tag_buffer: bytes
+    
+    def get_bytes(self):
+        result = (
+            self.error_code
+            + self.partition_id
+            + self.leader_id
+            + self.leader_epoch
+            + int_to_bytes(len(self.replicas_array) + 1, WireProtocol.LENGTH_BYTES)
+            + b"".join(replica for replica in self.replicas_array)
+            + int_to_bytes(
+                len(self.in_sync_replicas_array) + 1, WireProtocol.LENGTH_BYTES
+            )
+            + b"".join(replica for replica in self.in_sync_replicas_array)
+            + int_to_bytes(
+                len(self.eligible_leader_replicas_array) + 1,
+                WireProtocol.LENGTH_BYTES,
+            )
+            + b"".join(replica for replica in self.eligible_leader_replicas_array)
+            + int_to_bytes(
+                len(self.last_known_elr_array) + 1, WireProtocol.LENGTH_BYTES
+            )
+            + b"".join(replica for replica in self.last_known_elr_array)
+            + int_to_bytes(
+                len(self.offline_replicas_array) + 1, WireProtocol.LENGTH_BYTES
+            )
+            + b"".join(replica for replica in self.offline_replicas_array)
+            + self.tag_buffer
+        )
+        return result
+
 
 @dataclass
 class Topic:
@@ -64,7 +106,7 @@ class Topic:
     topic_name: TopicName
     topic_id: bytes
     is_internal: bytes
-    partitions_array: list[bytes]  # TODO Should be a generic way for the partition list
+    partitions_array: list[Partition]
     topic_auth_operations: bytes
     tag_buffer: bytes
 
@@ -75,9 +117,8 @@ class Topic:
             + self.topic_id
             + self.is_internal
             + int_to_bytes(len(self.partitions_array) + 1, WireProtocol.LENGTH_BYTES)
-            +
-            # No real patrition array content for now
-            self.topic_auth_operations
+            + b"".join(partition.get_bytes() for partition in self.partitions_array)
+            + self.topic_auth_operations
             + self.tag_buffer
         )
         return result

@@ -19,7 +19,7 @@ from app.messages.describe_topic_part import (
     DescribeTopicPartitionsResponseV0,
     DescribeTopicPartitionResponseBody,
     Topic,
-    TopicName,
+    TopicName, Partition,
 )
 from app.messages.headers import RequestHeaderV2, ResponseHeaderV0, ResponseHeaderV1
 from app.messages.mapping import APIKEYS
@@ -28,7 +28,7 @@ from app.protocol import (
     Errors,
     bytes_to_int,
     int_to_bytes,
-    int_to_bytes_signed,
+    int_to_bytes_signed, ValueTypes,
 )
 
 
@@ -111,7 +111,7 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
                 cluster_metadata = metadata_file.read()
                 metadata_buffer = Buffer(len(cluster_metadata), cluster_metadata)
                 metadata_log = read_cluster_metadata_log(metadata_buffer)
-                pprint(metadata_log)
+                logger.debug(metadata_log)
                 
         except (FileNotFoundError, FileExistsError) as e:
             logger.error("Cannot find or read cluster metadata: {}", e)
@@ -119,25 +119,68 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
             logger.error("There is an error during getting cluster metadata: {}", e)
 
         topic_name = request.body.topics_array[0].topic_name
+        
+        topics: dict[bytes, Topic] = {}
+        
+        # TODO Is this a good way to parse the topic? Fix it. 
+        for record_batch in metadata_log.record_batches:
+            for record in record_batch.records:
+                if bytes_to_int(record.value.type) == ValueTypes.TOPIC_RECORD_VALUE:
+                    topic_name_bytes = record.value.topic_name  
+                    if topic_name_bytes == topic_name:
+                        logger.info("Found topic {} in cluster metadata log", topic_name)
+                        if record.value.topic_uuid not in topics:
+                            topics[record.value.topic_uuid] = Topic(
+                                int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                                TopicName(topic_name),
+                                record.value.topic_uuid,
+                                int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
+                                [],
+                                int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
+                                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                            )
+                if bytes_to_int(record.value.type) == ValueTypes.PARTITION_RECORD_VALUE:
+                    topic_uuid = record.value.topic_uuid
+                    if topic_uuid in topics:
+                        partition = Partition(
+                            int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                            record.value.partition_id,
+                            record.value.leader_id,
+                            record.value.leader_epoch,
+                            record.value.replicas_array,
+                            record.value.in_sync_replica_array,
+                            record.value.adding_replicas_array,
+                            record.value.removing_replicas_array,
+                            [],
+                            record.value.tag_buffer    
+                        )
+                        topics[topic_uuid].partitions_array.append(partition)
+        
+        topic_content = list(topics.values())
+        pprint(topics)
+        if not topics:
+            logger.info("Topic {} not found in cluster metadata log", topic_name)
+            topic_content = [
+                        Topic(
+                            int_to_bytes(
+                                Errors.UNKNOWN_TOPIC_OR_PARTITION, WireProtocol.ERROR_BYTES
+                            ),
+                            TopicName(topic_name),
+                            int_to_bytes(0, WireProtocol.TOPIC_ID_BYTES),
+                            int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
+                            [],
+                            int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
+                            int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                        )
+                    ]
+             
         payload = DescribeTopicPartitionsResponseV0(
             ResponseHeaderV1(
                 correlation_id, int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES)
             ),
             DescribeTopicPartitionResponseBody(
                 int_to_bytes(0, WireProtocol.TIME_BYTES),
-                [
-                    Topic(
-                        int_to_bytes(
-                            Errors.UNKNOWN_TOPIC_OR_PARTITION, WireProtocol.ERROR_BYTES
-                        ),
-                        TopicName(topic_name),
-                        int_to_bytes(0, WireProtocol.TOPIC_ID_BYTES),
-                        int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
-                        [],
-                        int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
-                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-                    )
-                ],
+                topic_content,
                 int_to_bytes_signed(-1, WireProtocol.CURSOR_BYTES),
                 int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
             ),
