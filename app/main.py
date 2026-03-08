@@ -125,6 +125,7 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
         # TODO Is this a good way to parse the topic? Fix it. 
         for record_batch in metadata_log.record_batches:
             for record in record_batch.records:
+                print(f"Checking record with type {bytes_to_int(record.value.type),} for topic {topic_name}")
                 if bytes_to_int(record.value.type) == ValueTypes.TOPIC_RECORD_VALUE:
                     topic_name_bytes = record.value.topic_name  
                     if topic_name_bytes == topic_name:
@@ -135,25 +136,38 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
                                 TopicName(topic_name),
                                 record.value.topic_uuid,
                                 int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
-                                [],
+                                [Partition(
+                                    int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                                    int_to_bytes(0, 4),
+                                    int_to_bytes(1, 4),
+                                    int_to_bytes(0, 4),
+                                    [int_to_bytes(1, 2)],
+                                    [int_to_bytes(1, 2)],
+                                    [],
+                                    [],
+                                    [],
+                                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                                )],
                                 int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
                                 int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                             )
                 if bytes_to_int(record.value.type) == ValueTypes.PARTITION_RECORD_VALUE:
                     topic_uuid = record.value.topic_uuid
+                    print(f"Checking partition record for topic {topic_name} with uuid {topic_uuid}")
                     if topic_uuid in topics:
                         partition = Partition(
                             int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
                             record.value.partition_id,
-                            record.value.leader_id,
+                            record.value.leader,
                             record.value.leader_epoch,
-                            record.value.replicas_array,
+                            record.value.replica_array,
                             record.value.in_sync_replica_array,
                             record.value.adding_replicas_array,
                             record.value.removing_replicas_array,
                             [],
-                            record.value.tag_buffer    
+                            int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                         )
+                        print(f"Partition found for topic {topic_name}: {partition}")
                         topics[topic_uuid].partitions_array.append(partition)
         
         topic_content = list(topics.values())
