@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union, Self
+from typing import Union, Self, Protocol
 
 from app.connection import Buffer
 from app.logging import logger
@@ -35,16 +35,7 @@ def read_record(buffer: Buffer) -> RecordBatch:
         type_raw = buffer.read_bytes(1)
         # TODO Refactor different value type processing
         type_int = bytes_to_int(type_raw)  
-        if type_int == 12:   
-            value = FeatureLevelRecordValue.parse_data(buffer, frame_version)
-        elif type_int == 2:
-            value = TopicRecordValue.parse_data(buffer, frame_version)
-        elif type_int == 3:
-            value = PartitionRecordValue.parse_data(buffer, frame_version)
-        elif type_int == 1:
-            value = UnregisterBrokerRecordValue.parse_data(buffer, frame_version)
-        else:
-            raise Exception(f"Wrong value type: {type_int}")
+        value = Value.get(buffer, frame_version, type_raw)
         headers_array_count = buffer.read_bytes(1)
         records.append(
             Record(
@@ -121,11 +112,28 @@ class Record:
     headers_array_count: bytes
 
 
-type Value = Union[FeatureLevelRecordValue, TopicRecordValue, PartitionRecordValue, UnregisterBrokerRecordValue]
-
+class Value(Protocol):
+    
+    @classmethod
+    def get(cls, buffer: Buffer, frame_version: bytes, value_type: bytes) -> Self:
+        if value_type == b'\x0c':  # 12 in bytes
+            return FeatureLevelRecordValue.parse_data(buffer, frame_version)
+        elif value_type == b'\x02': # 2 in bytes
+            return TopicRecordValue.parse_data(buffer, frame_version)
+        elif value_type == b'\x03': # 3 in bytes
+            return PartitionRecordValue.parse_data(buffer, frame_version)
+        elif value_type == b'\x01': # 1 in bytes
+            return UnregisterBrokerRecordValue.parse_data(buffer, frame_version)
+        else:
+            raise Exception(f"Wrong value type: {value_type}")
+    
+    @classmethod
+    def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
+        raise NotImplementedError("This method should be implemented in subclasses")
+    
 
 @dataclass
-class FeatureLevelRecordValue:
+class FeatureLevelRecordValue(Value):
     frame_version: bytes
     type: bytes
     version: bytes
