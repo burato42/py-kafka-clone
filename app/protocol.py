@@ -3,6 +3,7 @@ class Errors:
     UNSUPPORTED_VERSION: int = 35
     UNKNOWN_TOPIC_OR_PARTITION: int = 3
 
+
 class ValueTypes:
     FEATURE_LEVEL_RECORD_VALUE: int = 12
     TOPIC_RECORD_VALUE: int = 2

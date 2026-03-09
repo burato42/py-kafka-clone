@@ -57,6 +57,7 @@ class TopicName:
             [int_to_bytes(size + 1, WireProtocol.LENGTH_BYTES), self.content]
         )
 
+
 @dataclass
 class Partition:
     error_code: bytes
@@ -67,9 +68,9 @@ class Partition:
     in_sync_replicas_array: list[bytes]
     eligible_leader_replicas_array: list[bytes]
     last_known_elr_array: list[bytes]
-    offline_replicas_array: list[bytes] 
+    offline_replicas_array: list[bytes]
     tag_buffer: bytes
-    
+
     def get_bytes(self):
         result = (
             self.error_code

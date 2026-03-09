@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union, Self, Protocol
+from typing import Self, Protocol
 
 from app.connection import Buffer
 from app.logging import logger
@@ -28,13 +28,15 @@ def read_record(buffer: Buffer) -> RecordBatch:
         timestamp_delta = buffer.read_bytes(1)
         offset_delta = buffer.read_bytes(1)
         key_length_raw = buffer.read_bytes(1)
-        key_length = bytes_to_int(key_length_raw) - 1 #The key_length is set to 0 for now  
+        key_length = (
+            bytes_to_int(key_length_raw) - 1
+        )  # The key_length is set to 0 for now
         # key: bytes Ignore for now
         value_length_raw = buffer.read_bytes(1)
         frame_version = buffer.read_bytes(1)
         type_raw = buffer.read_bytes(1)
         # TODO Refactor different value type processing
-        type_int = bytes_to_int(type_raw)  
+        type_int = bytes_to_int(type_raw)
         value = Value.get(buffer, frame_version, type_raw)
         headers_array_count = buffer.read_bytes(1)
         records.append(
@@ -45,7 +47,7 @@ def read_record(buffer: Buffer) -> RecordBatch:
                 offset_delta,
                 b"",
                 value,
-                headers_array_count
+                headers_array_count,
             )
         )
     return RecordBatch(
@@ -72,7 +74,7 @@ def read_cluster_metadata_log(buffer: Buffer) -> ClusterMetadataLogFile:
             batches.append(read_record(buffer))
         except Exception as e:
             logger.error("Didn't manage to parse all the arguments: {}", e)
-    
+
     return ClusterMetadataLogFile(batches)
 
 
@@ -95,13 +97,13 @@ class RecordBatch:
     producer_id: bytes
     producer_epoch: bytes
     base_sequence: bytes
-    # Don't forget the length during the parsing 
+    # Don't forget the length during the parsing
     records: list[Record]
-    
-    
+
+
 @dataclass
 class Record:
-    length: bytes  
+    length: bytes
     attributes: bytes
     timestamp_delta: bytes
     offset_delta: bytes
@@ -113,24 +115,23 @@ class Record:
 
 
 class Value(Protocol):
-    
     @classmethod
     def get(cls, buffer: Buffer, frame_version: bytes, value_type: bytes) -> Self:
-        if value_type == b'\x0c':  # 12 in bytes
+        if value_type == b"\x0c":  # 12 in bytes
             return FeatureLevelRecordValue.parse_data(buffer, frame_version)
-        elif value_type == b'\x02': # 2 in bytes
+        elif value_type == b"\x02":  # 2 in bytes
             return TopicRecordValue.parse_data(buffer, frame_version)
-        elif value_type == b'\x03': # 3 in bytes
+        elif value_type == b"\x03":  # 3 in bytes
             return PartitionRecordValue.parse_data(buffer, frame_version)
-        elif value_type == b'\x01': # 1 in bytes
+        elif value_type == b"\x01":  # 1 in bytes
             return UnregisterBrokerRecordValue.parse_data(buffer, frame_version)
         else:
             raise Exception(f"Wrong value type: {value_type}")
-    
+
     @classmethod
     def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
         raise NotImplementedError("This method should be implemented in subclasses")
-    
+
 
 @dataclass
 class FeatureLevelRecordValue(Value):
@@ -140,8 +141,7 @@ class FeatureLevelRecordValue(Value):
     name: bytes
     feature_level: bytes
     tagged_fields_count: bytes
-    
-    
+
     @classmethod
     def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
         version = buffer.read_bytes(1)
@@ -150,16 +150,16 @@ class FeatureLevelRecordValue(Value):
         name = buffer.read_bytes(name_length)
         feature_level = buffer.read_bytes(2)
         tagged_fields_count = buffer.read_bytes(1)
-        
+
         return cls(
             frame_version,
-            b'\x0c', # 12 in bytes
+            b"\x0c",  # 12 in bytes
             version,
             name,
             feature_level,
-            tagged_fields_count
+            tagged_fields_count,
         )
-    
+
 
 @dataclass
 class TopicRecordValue:
@@ -178,16 +178,16 @@ class TopicRecordValue:
         topic_name = buffer.read_bytes(name_length)
         topic_uuid = buffer.read_bytes(16)
         tagged_fields_count = buffer.read_bytes(1)
-        
+
         return TopicRecordValue(
             frame_version,
-            b'\x02', # 2 in bytes
+            b"\x02",  # 2 in bytes
             version,
             topic_name,
             topic_uuid,
-            tagged_fields_count
+            tagged_fields_count,
         )
-    
+
 
 @dataclass
 class PartitionRecordValue:
@@ -196,16 +196,16 @@ class PartitionRecordValue:
     version: bytes
     partition_id: bytes
     topic_uuid: bytes
-    replica_array: list[bytes] # compact array
-    in_sync_replica_array: list[bytes] # compact array
-    removing_replicas_array: list[bytes] # compact array
-    adding_replicas_array: list[bytes] # compact array
+    replica_array: list[bytes]  # compact array
+    in_sync_replica_array: list[bytes]  # compact array
+    removing_replicas_array: list[bytes]  # compact array
+    adding_replicas_array: list[bytes]  # compact array
     leader: bytes
     leader_epoch: bytes
     partition_epoch: bytes
-    directories_array: list[bytes] # compact array
+    directories_array: list[bytes]  # compact array
     tagged_fields_count: bytes
-    
+
     @classmethod
     def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
         version = buffer.read_bytes(1)
@@ -215,25 +215,39 @@ class PartitionRecordValue:
         replica_array_length = bytes_to_int(replica_array_length_raw) - 1
         replica_array = [buffer.read_bytes(4) for _ in range(replica_array_length)]
         in_sync_replica_array_length_raw = buffer.read_bytes(1)
-        in_sync_replica_array_length = bytes_to_int(in_sync_replica_array_length_raw) - 1
-        in_sync_replica_array = [buffer.read_bytes(4) for _ in range(in_sync_replica_array_length)]
+        in_sync_replica_array_length = (
+            bytes_to_int(in_sync_replica_array_length_raw) - 1
+        )
+        in_sync_replica_array = [
+            buffer.read_bytes(4) for _ in range(in_sync_replica_array_length)
+        ]
         removing_replicas_array_length_raw = buffer.read_bytes(1)
-        removing_replicas_array_length = bytes_to_int(removing_replicas_array_length_raw) - 1
-        removing_replicas_array = [buffer.read_bytes(4) for _ in range(removing_replicas_array_length)]
+        removing_replicas_array_length = (
+            bytes_to_int(removing_replicas_array_length_raw) - 1
+        )
+        removing_replicas_array = [
+            buffer.read_bytes(4) for _ in range(removing_replicas_array_length)
+        ]
         adding_replicas_array_length_raw = buffer.read_bytes(1)
-        adding_replicas_array_length = bytes_to_int(adding_replicas_array_length_raw) - 1
-        adding_replicas_array = [buffer.read_bytes(4) for _ in range(adding_replicas_array_length)]
+        adding_replicas_array_length = (
+            bytes_to_int(adding_replicas_array_length_raw) - 1
+        )
+        adding_replicas_array = [
+            buffer.read_bytes(4) for _ in range(adding_replicas_array_length)
+        ]
         leader = buffer.read_bytes(4)
         leader_epoch = buffer.read_bytes(4)
         partition_epoch = buffer.read_bytes(4)
         directories_array_length_raw = buffer.read_bytes(1)
         directories_array_length = bytes_to_int(directories_array_length_raw) - 1
-        directories_array = [buffer.read_bytes(1) for _ in range(directories_array_length)]
+        directories_array = [
+            buffer.read_bytes(1) for _ in range(directories_array_length)
+        ]
         tagged_fields_count = buffer.read_bytes(1)
-        
+
         return cls(
             frame_version,
-            b'\x03', # 3 in bytes
+            b"\x03",  # 3 in bytes
             version,
             partition_id,
             topic_uuid,
@@ -245,7 +259,7 @@ class PartitionRecordValue:
             leader_epoch,
             partition_epoch,
             directories_array,
-            tagged_fields_count
+            tagged_fields_count,
         )
 
 
@@ -257,19 +271,19 @@ class UnregisterBrokerRecordValue:
     broker_id: bytes
     broker_epoch: bytes
     tagged_fields_count: bytes
-    
+
     @classmethod
     def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
         version = buffer.read_bytes(1)
         broker_id = buffer.read_bytes(4)
         broker_epoch = buffer.read_bytes(8)
         tagged_fields_count = buffer.read_bytes(1)
-        
+
         return cls(
             frame_version,
-            b'\x01', # 1 in bytes
+            b"\x01",  # 1 in bytes
             version,
             broker_id,
             broker_epoch,
-            tagged_fields_count
+            tagged_fields_count,
         )
