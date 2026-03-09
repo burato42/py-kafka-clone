@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Union, Self
 
 from app.connection import Buffer
 from app.logging import logger
@@ -35,91 +35,14 @@ def read_record(buffer: Buffer) -> RecordBatch:
         type_raw = buffer.read_bytes(1)
         # TODO Refactor different value type processing
         type_int = bytes_to_int(type_raw)  
-        if type_int == 12:
-            version = buffer.read_bytes(1)
-            name_length_raw = buffer.read_bytes(1)
-            name_length = bytes_to_int(name_length_raw) - 1
-            name = buffer.read_bytes(name_length)
-            feature_level = buffer.read_bytes(2)
-            tagged_fields_count = buffer.read_bytes(1)
-    
-            value = FeatureLevelRecordValue(
-                frame_version,
-                type_raw,
-                version,
-                name,
-                feature_level,
-                tagged_fields_count
-            )
+        if type_int == 12:   
+            value = FeatureLevelRecordValue.parse_data(buffer, frame_version)
         elif type_int == 2:
-            version = buffer.read_bytes(1)
-            name_length_raw = buffer.read_bytes(1)
-            name_length = bytes_to_int(name_length_raw) - 1
-            topic_name = buffer.read_bytes(name_length)
-            topic_uuid = buffer.read_bytes(16)
-            tagged_fields_count = buffer.read_bytes(1)
-            
-            value = TopicRecordValue(
-                frame_version,
-                type_raw,
-                version,
-                topic_name,
-                topic_uuid,
-                tagged_fields_count
-            )
+            value = TopicRecordValue.parse_data(buffer, frame_version)
         elif type_int == 3:
-            version = buffer.read_bytes(1)
-            partition_id = buffer.read_bytes(4)
-            topic_uuid = buffer.read_bytes(16)
-            replica_array_length_raw = buffer.read_bytes(1)
-            replica_array_length = bytes_to_int(replica_array_length_raw) - 1
-            replica_array = [buffer.read_bytes(4) for _ in range(replica_array_length)]
-            in_sync_replica_array_length_raw = buffer.read_bytes(1)
-            in_sync_replica_array_length = bytes_to_int(in_sync_replica_array_length_raw) - 1
-            in_sync_replica_array = [buffer.read_bytes(4) for _ in range(in_sync_replica_array_length)]
-            removing_replicas_array_length_raw = buffer.read_bytes(1)
-            removing_replicas_array_length = bytes_to_int(removing_replicas_array_length_raw) - 1
-            removing_replicas_array = [buffer.read_bytes(4) for _ in range(removing_replicas_array_length)]
-            adding_replicas_array_length_raw = buffer.read_bytes(1)
-            adding_replicas_array_length = bytes_to_int(adding_replicas_array_length_raw) - 1
-            adding_replicas_array = [buffer.read_bytes(4) for _ in range(adding_replicas_array_length)]
-            leader = buffer.read_bytes(4)
-            leader_epoch = buffer.read_bytes(4)
-            partition_epoch = buffer.read_bytes(4)
-            directories_array_length_raw = buffer.read_bytes(1)
-            directories_array_length = bytes_to_int(directories_array_length_raw) - 1
-            directories_array = [buffer.read_bytes(1) for _ in range(directories_array_length)]
-            tagged_fields_count = buffer.read_bytes(1)
-            value = PartitionRecordValue(
-                frame_version,
-                type_raw,
-                version,
-                partition_id,
-                topic_uuid,
-                replica_array,
-                in_sync_replica_array,
-                removing_replicas_array,
-                adding_replicas_array,
-                leader,
-                leader_epoch,
-                partition_epoch,
-                directories_array,
-                tagged_fields_count
-            )
+            value = PartitionRecordValue.parse_data(buffer, frame_version)
         elif type_int == 1:
-            version = buffer.read_bytes(1)
-            broker_id = buffer.read_bytes(4)
-            broker_epoch = buffer.read_bytes(8)
-            tagged_fields_count = buffer.read_bytes(1)
-            
-            value = UnregisterBrokerRecordValue(
-                frame_version,
-                type_raw,
-                version,
-                broker_id,
-                broker_epoch,
-                tagged_fields_count
-            )
+            value = UnregisterBrokerRecordValue.parse_data(buffer, frame_version)
         else:
             raise Exception(f"Wrong value type: {type_int}")
         headers_array_count = buffer.read_bytes(1)
@@ -210,6 +133,25 @@ class FeatureLevelRecordValue:
     feature_level: bytes
     tagged_fields_count: bytes
     
+    
+    @classmethod
+    def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
+        version = buffer.read_bytes(1)
+        name_length_raw = buffer.read_bytes(1)
+        name_length = bytes_to_int(name_length_raw) - 1
+        name = buffer.read_bytes(name_length)
+        feature_level = buffer.read_bytes(2)
+        tagged_fields_count = buffer.read_bytes(1)
+        
+        return cls(
+            frame_version,
+            b'\x0c', # 12 in bytes
+            version,
+            name,
+            feature_level,
+            tagged_fields_count
+        )
+    
 
 @dataclass
 class TopicRecordValue:
@@ -219,6 +161,24 @@ class TopicRecordValue:
     topic_name: bytes
     topic_uuid: bytes
     tagged_fields_count: bytes
+
+    @classmethod
+    def parse_data(self, buffer: Buffer, frame_version: bytes) -> Self:
+        version = buffer.read_bytes(1)
+        name_length_raw = buffer.read_bytes(1)
+        name_length = bytes_to_int(name_length_raw) - 1
+        topic_name = buffer.read_bytes(name_length)
+        topic_uuid = buffer.read_bytes(16)
+        tagged_fields_count = buffer.read_bytes(1)
+        
+        return TopicRecordValue(
+            frame_version,
+            b'\x02', # 2 in bytes
+            version,
+            topic_name,
+            topic_uuid,
+            tagged_fields_count
+        )
     
 
 @dataclass
@@ -237,6 +197,48 @@ class PartitionRecordValue:
     partition_epoch: bytes
     directories_array: list[bytes] # compact array
     tagged_fields_count: bytes
+    
+    @classmethod
+    def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
+        version = buffer.read_bytes(1)
+        partition_id = buffer.read_bytes(4)
+        topic_uuid = buffer.read_bytes(16)
+        replica_array_length_raw = buffer.read_bytes(1)
+        replica_array_length = bytes_to_int(replica_array_length_raw) - 1
+        replica_array = [buffer.read_bytes(4) for _ in range(replica_array_length)]
+        in_sync_replica_array_length_raw = buffer.read_bytes(1)
+        in_sync_replica_array_length = bytes_to_int(in_sync_replica_array_length_raw) - 1
+        in_sync_replica_array = [buffer.read_bytes(4) for _ in range(in_sync_replica_array_length)]
+        removing_replicas_array_length_raw = buffer.read_bytes(1)
+        removing_replicas_array_length = bytes_to_int(removing_replicas_array_length_raw) - 1
+        removing_replicas_array = [buffer.read_bytes(4) for _ in range(removing_replicas_array_length)]
+        adding_replicas_array_length_raw = buffer.read_bytes(1)
+        adding_replicas_array_length = bytes_to_int(adding_replicas_array_length_raw) - 1
+        adding_replicas_array = [buffer.read_bytes(4) for _ in range(adding_replicas_array_length)]
+        leader = buffer.read_bytes(4)
+        leader_epoch = buffer.read_bytes(4)
+        partition_epoch = buffer.read_bytes(4)
+        directories_array_length_raw = buffer.read_bytes(1)
+        directories_array_length = bytes_to_int(directories_array_length_raw) - 1
+        directories_array = [buffer.read_bytes(1) for _ in range(directories_array_length)]
+        tagged_fields_count = buffer.read_bytes(1)
+        
+        return cls(
+            frame_version,
+            b'\x03', # 3 in bytes
+            version,
+            partition_id,
+            topic_uuid,
+            replica_array,
+            in_sync_replica_array,
+            removing_replicas_array,
+            adding_replicas_array,
+            leader,
+            leader_epoch,
+            partition_epoch,
+            directories_array,
+            tagged_fields_count
+        )
 
 
 @dataclass
@@ -247,3 +249,19 @@ class UnregisterBrokerRecordValue:
     broker_id: bytes
     broker_epoch: bytes
     tagged_fields_count: bytes
+    
+    @classmethod
+    def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
+        version = buffer.read_bytes(1)
+        broker_id = buffer.read_bytes(4)
+        broker_epoch = buffer.read_bytes(8)
+        tagged_fields_count = buffer.read_bytes(1)
+        
+        return cls(
+            frame_version,
+            b'\x01', # 1 in bytes
+            version,
+            broker_id,
+            broker_epoch,
+            tagged_fields_count
+        )
