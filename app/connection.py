@@ -36,3 +36,16 @@ class Buffer:
         packet = self.peek_bytes(n)
         self.position += n
         return packet
+
+    def read_varint(self) -> int:
+        """Read a zigzag-encoded varint and return the decoded signed integer."""
+        raw = 0
+        shift = 0
+        while True:
+            b = self.data[self.position]
+            self.position += 1
+            raw |= (b & 0x7F) << shift
+            shift += 7
+            if not (b & 0x80):
+                break
+        return (raw >> 1) ^ -(raw & 1)

@@ -9,6 +9,10 @@ from app.protocol import bytes_to_int
 def read_record(buffer: Buffer) -> RecordBatch:
     base_offset_raw = buffer.read_bytes(8)
     batch_length_raw = buffer.read_bytes(4)
+    batch_length = bytes_to_int(batch_length_raw)
+    # batch_length covers bytes from partition_leader_epoch to end of batch
+    batch_end = buffer.position + batch_length
+
     partition_leader_epoch_raw = buffer.read_bytes(4)
     magic_byte_raw = buffer.read_bytes(1)
     crc_raw = buffer.read_bytes(4)
@@ -22,34 +26,37 @@ def read_record(buffer: Buffer) -> RecordBatch:
     record_length_raw = buffer.read_bytes(4)
     record_length = bytes_to_int(record_length_raw)
     records = []
-    for _ in range(record_length):
-        length = buffer.read_bytes(1)
-        attributes = buffer.read_bytes(1)
-        timestamp_delta = buffer.read_bytes(1)
-        offset_delta = buffer.read_bytes(1)
-        key_length_raw = buffer.read_bytes(1)
-        key_length = (
-            bytes_to_int(key_length_raw) - 1
-        )  # The key_length is set to 0 for now
-        # key: bytes Ignore for now
-        value_length_raw = buffer.read_bytes(1)
-        frame_version = buffer.read_bytes(1)
-        type_raw = buffer.read_bytes(1)
-        # TODO Refactor different value type processing
-        type_int = bytes_to_int(type_raw)
-        value = Value.get(buffer, frame_version, type_raw)
-        headers_array_count = buffer.read_bytes(1)
-        records.append(
-            Record(
-                length,
-                attributes,
-                timestamp_delta,
-                offset_delta,
-                b"",
-                value,
-                headers_array_count,
+    try:
+        for _ in range(record_length):
+            length = buffer.read_varint()
+            attributes = buffer.read_bytes(1)
+            timestamp_delta = buffer.read_varint()
+            offset_delta = buffer.read_varint()
+            key_length = buffer.read_varint()
+            if key_length > 0:
+                buffer.read_bytes(key_length)
+            value_length = buffer.read_varint()
+            frame_version = buffer.read_bytes(1)
+            type_raw = buffer.read_bytes(1)
+            value = Value.get(buffer, frame_version, type_raw)
+            headers_array_count = buffer.read_bytes(1)
+            records.append(
+                Record(
+                    length,
+                    attributes,
+                    timestamp_delta,
+                    offset_delta,
+                    b"",
+                    value,
+                    headers_array_count,
+                )
             )
-        )
+    except Exception as e:
+        logger.error("Didn't manage to parse all the arguments: {}", e)
+    finally:
+        # Always advance to exact end of batch regardless of parse errors
+        buffer.position = batch_end
+
     return RecordBatch(
         base_offset_raw,
         batch_length_raw,
@@ -70,10 +77,7 @@ def read_record(buffer: Buffer) -> RecordBatch:
 def read_cluster_metadata_log(buffer: Buffer) -> ClusterMetadataLogFile:
     batches = []
     while buffer.position < buffer.message_size:
-        try:
-            batches.append(read_record(buffer))
-        except Exception as e:
-            logger.error("Didn't manage to parse all the arguments: {}", e)
+        batches.append(read_record(buffer))
 
     return ClusterMetadataLogFile(batches)
 
@@ -103,13 +107,11 @@ class RecordBatch:
 
 @dataclass
 class Record:
-    length: bytes
+    length: int
     attributes: bytes
-    timestamp_delta: bytes
-    offset_delta: bytes
-    # key_length: bytes
+    timestamp_delta: int
+    offset_delta: int
     key: bytes
-    # value_length:bytes
     value: Value
     headers_array_count: bytes
 
@@ -241,7 +243,7 @@ class PartitionRecordValue:
         directories_array_length_raw = buffer.read_bytes(1)
         directories_array_length = bytes_to_int(directories_array_length_raw) - 1
         directories_array = [
-            buffer.read_bytes(1) for _ in range(directories_array_length)
+            buffer.read_bytes(16) for _ in range(directories_array_length)
         ]
         tagged_fields_count = buffer.read_bytes(1)
 

@@ -124,22 +124,7 @@ def handle_describe_topic_partition_request(
                             TopicName(topic_name),
                             record.value.topic_uuid,
                             int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
-                            [
-                                Partition(
-                                    int_to_bytes(
-                                        Errors.NO_ERROR, WireProtocol.ERROR_BYTES
-                                    ),
-                                    int_to_bytes(0, 4),
-                                    int_to_bytes(1, 4),
-                                    int_to_bytes(0, 4),
-                                    [int_to_bytes(1, 2)],
-                                    [int_to_bytes(1, 2)],
-                                    [],
-                                    [],
-                                    [],
-                                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-                                )
-                            ],
+                            [],
                             int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
                             int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                         )
@@ -161,13 +146,13 @@ def handle_describe_topic_partition_request(
                         [],
                         int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                     )
-                    print(f"Partition found for topic {topic_name}: {partition}")
+                    logger.debug(f"Partition found for topic {topic_name}: {partition}")
                     topics[topic_uuid].partitions_array.append(partition)
 
     topic_content = list(topics.values())
 
     if not topics:
-        logger.info("Topic {} not found in cluster metadata log", topic_name)
+        logger.warning("Topic {} not found in cluster metadata log", topic_name)
         topic_content = [
             Topic(
                 int_to_bytes(
