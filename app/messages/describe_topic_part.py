@@ -141,6 +141,7 @@ class Topic:
 
 @dataclass
 class DescribeTopicPartitionResponseBody:
+    # TODO init is not needed as it's a dataclass
     def __init__(
         self,
         throttle_time: bytes,

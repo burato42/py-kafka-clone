@@ -142,7 +142,7 @@ class Value:
 
 
 @dataclass
-class FeatureLevelRecordValue(Value):  # type: ignore[misc]
+class FeatureLevelRecordValue:
     frame_version: bytes
     type: bytes
     version: bytes
