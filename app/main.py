@@ -104,60 +104,44 @@ def handle_describe_topic_partition_request(
     except Exception as e:
         logger.error("There is an error during getting cluster metadata: {}", e)
 
-    topic_names: list[str] = [topic.topic_name for topic in request.body.topics_array]
+    requested_topics = {bytes(topic.topic_name) for topic in request.body.topics_array}
 
     topics: dict[bytes, Topic] = {}
 
-    # TODO Is this a good way to parse the topic? Fix it.
     for record_batch in metadata_log.record_batches:
-        for topic_name in topic_names:
-            for record in record_batch.records:
-                logger.debug(
-                    "Checking record with type {} for topic {}",
-                    bytes_to_int(record.value.type),
-                    topic_name,
-                )
-                if bytes_to_int(record.value.type) == ValueTypes.TOPIC_RECORD_VALUE:
-                    topic_name_bytes = record.value.topic_name
-                    if topic_name_bytes == topic_name:
-                        logger.info(
-                            "Found topic {} in cluster metadata log", topic_name
-                        )
-                        if record.value.topic_uuid not in topics:
-                            topics[record.value.topic_uuid] = Topic(
-                                int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
-                                TopicName(topic_name),
-                                record.value.topic_uuid,
-                                int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
-                                [],
-                                int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
-                                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-                            )
-                if bytes_to_int(record.value.type) == ValueTypes.PARTITION_RECORD_VALUE:
-                    topic_uuid = record.value.topic_uuid
-                    print(
-                        f"Checking partition record for topic {topic_name} with uuid {topic_uuid}"
+        for record in record_batch.records:
+            val = record.value
+            record_type = bytes_to_int(val.type)
+            logger.debug("Checking record with type {}", record_type)
+
+            if record_type == ValueTypes.TOPIC_RECORD_VALUE:
+                if bytes(val.topic_name) in requested_topics and val.topic_uuid not in topics:
+                    logger.info("Found topic {} in cluster metadata log", val.topic_name)
+                    topics[val.topic_uuid] = Topic(
+                        int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                        TopicName(val.topic_name),
+                        val.topic_uuid,
+                        int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
+                        [],
+                        int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
+                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                     )
-                    if (
-                        topic_uuid in topics
-                        and topic_name == topics[topic_uuid].topic_name.content
-                    ):
-                        partition = Partition(
-                            int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
-                            record.value.partition_id,
-                            record.value.leader,
-                            record.value.leader_epoch,
-                            record.value.replica_array,
-                            record.value.in_sync_replica_array,
-                            record.value.removing_replicas_array,
-                            record.value.adding_replicas_array,
-                            [],
-                            int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-                        )
-                        logger.debug(
-                            f"Partition found for topic {topic_name}: {partition}"
-                        )
-                        topics[topic_uuid].partitions_array.append(partition)
+            elif record_type == ValueTypes.PARTITION_RECORD_VALUE:
+                if val.topic_uuid in topics:
+                    partition = Partition(
+                        int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                        val.partition_id,
+                        val.leader,
+                        val.leader_epoch,
+                        val.replica_array,
+                        val.in_sync_replica_array,
+                        val.removing_replicas_array,
+                        val.adding_replicas_array,
+                        [],
+                        int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                    )
+                    logger.debug("Partition found for topic uuid {}: {}", val.topic_uuid, partition)
+                    topics[val.topic_uuid].partitions_array.append(partition)
 
     topic_content = list(
         sorted(
@@ -165,21 +149,21 @@ def handle_describe_topic_partition_request(
         )
     )
 
-    if not topics:
-        logger.warning("Topic {} not found in cluster metadata log", topic_name)
-        topic_content = [
-            Topic(
-                int_to_bytes(
-                    Errors.UNKNOWN_TOPIC_OR_PARTITION, WireProtocol.ERROR_BYTES
-                ),
-                TopicName(topic_name),
-                int_to_bytes(0, WireProtocol.TOPIC_ID_BYTES),
-                int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
-                [],
-                int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
-                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+    found_names = {bytes(t.topic_name.content) for t in topics.values()}
+    for name in requested_topics:
+        if name not in found_names:
+            logger.warning("Topic {} not found in cluster metadata log", name)
+            topic_content.append(
+                Topic(
+                    int_to_bytes(Errors.UNKNOWN_TOPIC_OR_PARTITION, WireProtocol.ERROR_BYTES),
+                    TopicName(name),
+                    int_to_bytes(0, WireProtocol.TOPIC_ID_BYTES),
+                    int_to_bytes(0, WireProtocol.BOOLEAN_BYTES),
+                    [],
+                    int_to_bytes(0, WireProtocol.TOPIC_AUTH_OPS_BYTES),
+                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                )
             )
-        ]
 
     payload = DescribeTopicPartitionsResponseV0(
         ResponseHeaderV1(
