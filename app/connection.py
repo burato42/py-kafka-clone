@@ -4,7 +4,7 @@ from app.protocol import WireProtocol
 
 
 class Reader:
-    def __init__(self, socket_obj: socket.socket):
+    def __init__(self, socket_obj: socket):
         self.socket_obj = socket_obj
 
     def read_full_message(self) -> tuple[int, bytes]:

@@ -4,5 +4,10 @@ version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
     "loguru>=0.7.3",
+    "mypy>=1.20.2",
     "ruff>=0.15.1",
+    "tool>=0.8.0",
 ]
+
+[tool.mypy]
+ignore_missing_imports = true

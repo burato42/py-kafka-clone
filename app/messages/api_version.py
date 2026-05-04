@@ -1,9 +1,16 @@
 from dataclasses import dataclass
 
+from loguru import logger
+
 from app.messages import ApiResponse, ApiRequest
-from app.messages.api_key import ApiKey
-from app.messages.headers import ResponseHeaderV0
-from app.protocol import WireProtocol, int_to_bytes, bytes_to_int
+from app.messages.api_key import (
+    ApiKey,
+    api_version_key,
+    describe_topic_partiition_key,
+    fetch_key,
+)
+from app.messages.headers import RequestHeaderV2, ResponseHeaderV0
+from app.protocol import Errors, WireProtocol, int_to_bytes, bytes_to_int
 
 
 @dataclass
@@ -55,3 +62,31 @@ class ApiVersionResponseBody:
 class ApiVersionResponse(ApiResponse):
     header: ResponseHeaderV0
     body: ApiVersionResponseBody
+
+
+def handle_api_version_request(request: ApiVersionRequest) -> ApiResponse:
+    header: RequestHeaderV2 = request.header
+    correlation_id = header.correlation_id
+    logger.info("Received API Version request from client ID: {}", header.client_id)
+    if 4 >= bytes_to_int(header.api_version) >= 0:
+        payload = ApiVersionResponse(
+            ResponseHeaderV0(correlation_id),
+            ApiVersionResponseBody(
+                int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                [api_version_key, describe_topic_partiition_key, fetch_key],
+                int_to_bytes(0, WireProtocol.TIME_BYTES),
+                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+            ),
+        )
+    else:
+        payload = ApiVersionResponse(
+            ResponseHeaderV0(correlation_id),
+            ApiVersionResponseBody(
+                int_to_bytes(Errors.UNSUPPORTED_VERSION, WireProtocol.ERROR_BYTES),
+                [],
+                int_to_bytes(0, WireProtocol.TIME_BYTES),
+                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+            ),
+        )
+
+    return payload

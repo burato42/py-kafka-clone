@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Self, Protocol
+from typing import Self, Union
 
 from app.connection import Buffer
 from app.logging import logger
@@ -35,7 +35,7 @@ def read_record(buffer: Buffer) -> RecordBatch:
             key_length = buffer.read_varint()
             if key_length > 0:
                 buffer.read_bytes(key_length)
-            value_length = buffer.read_varint()
+            _ = buffer.read_varint()
             frame_version = buffer.read_bytes(1)
             type_raw = buffer.read_bytes(1)
             value = Value.get(buffer, frame_version, type_raw)
@@ -105,6 +105,14 @@ class RecordBatch:
     records: list[Record]
 
 
+RecordValue = Union[
+    "FeatureLevelRecordValue",
+    "TopicRecordValue",
+    "PartitionRecordValue",
+    "UnregisterBrokerRecordValue",
+]
+
+
 @dataclass
 class Record:
     length: int
@@ -112,13 +120,15 @@ class Record:
     timestamp_delta: int
     offset_delta: int
     key: bytes
-    value: Value
+    value: RecordValue
     headers_array_count: bytes
 
 
-class Value(Protocol):
+class Value:
     @classmethod
-    def get(cls, buffer: Buffer, frame_version: bytes, value_type: bytes) -> Self:
+    def get(
+        cls, buffer: Buffer, frame_version: bytes, value_type: bytes
+    ) -> RecordValue:
         if value_type == b"\x0c":  # 12 in bytes
             return FeatureLevelRecordValue.parse_data(buffer, frame_version)
         elif value_type == b"\x02":  # 2 in bytes
@@ -128,15 +138,11 @@ class Value(Protocol):
         elif value_type == b"\x01":  # 1 in bytes
             return UnregisterBrokerRecordValue.parse_data(buffer, frame_version)
         else:
-            raise Exception(f"Wrong value type: {value_type}")
-
-    @classmethod
-    def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
-        raise NotImplementedError("This method should be implemented in subclasses")
+            raise Exception(f"Wrong value type: {value_type!r}")
 
 
 @dataclass
-class FeatureLevelRecordValue(Value):
+class FeatureLevelRecordValue(Value):  # type: ignore[misc]
     frame_version: bytes
     type: bytes
     version: bytes
@@ -173,7 +179,7 @@ class TopicRecordValue:
     tagged_fields_count: bytes
 
     @classmethod
-    def parse_data(self, buffer: Buffer, frame_version: bytes) -> Self:
+    def parse_data(cls, buffer: Buffer, frame_version: bytes) -> Self:
         version = buffer.read_bytes(1)
         name_length_raw = buffer.read_bytes(1)
         name_length = bytes_to_int(name_length_raw) - 1
@@ -181,7 +187,7 @@ class TopicRecordValue:
         topic_uuid = buffer.read_bytes(16)
         tagged_fields_count = buffer.read_bytes(1)
 
-        return TopicRecordValue(
+        return cls(
             frame_version,
             b"\x02",  # 2 in bytes
             version,
