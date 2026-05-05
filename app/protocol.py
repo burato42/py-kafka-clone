@@ -2,6 +2,7 @@ class Errors:
     NO_ERROR: int = 0
     UNSUPPORTED_VERSION: int = 35
     UNKNOWN_TOPIC_OR_PARTITION: int = 3
+    UNKNOWN_TOPIC_ID: int = 100
 
 
 class ValueTypes:

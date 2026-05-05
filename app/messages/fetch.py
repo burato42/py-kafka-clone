@@ -139,11 +139,50 @@ class FetchRequest(ApiRequest):
 
 
 @dataclass
+class FetchResponsePartition:
+    partition_index: bytes   # INT32
+    error_code: bytes        # INT16
+    high_watermark: bytes    # INT64
+    last_stable_offset: bytes  # INT64
+    log_start_offset: bytes    # INT64
+    # aborted_transactions: compact array (empty = \x01)
+    # preferred_read_replica: INT32
+    # records: compact nullable bytes (null = \x00)
+    # tag_buffer
+
+    def get_bytes(self) -> bytes:
+        return (
+            self.partition_index
+            + self.error_code
+            + self.high_watermark
+            + self.last_stable_offset
+            + self.log_start_offset
+            + b"\x01"    # aborted_transactions: empty compact array
+            + int_to_bytes(0xFFFFFFFF, 4)  # preferred_read_replica: -1 (none)
+            + b"\x00"    # records: null compact bytes
+            + b"\x00"    # tag_buffer
+        )
+
+
+@dataclass
+class FetchResponseTopic:
+    topic_id: bytes
+    partitions: list[FetchResponsePartition]
+
+    def get_bytes(self) -> bytes:
+        result = self.topic_id + int_to_bytes(len(self.partitions) + 1, WireProtocol.LENGTH_BYTES)
+        for part in self.partitions:
+            result += part.get_bytes()
+        result += b"\x00"  # tag_buffer
+        return result
+
+
+@dataclass
 class FetchResponseBody:
     throttle_time: bytes
     error_code: bytes
     session_id: bytes
-    responses: list[bytes]
+    responses: list[FetchResponseTopic]
     tag_buffer: bytes
 
     def get_bytes(self) -> bytes:
@@ -154,7 +193,7 @@ class FetchResponseBody:
             + int_to_bytes(len(self.responses) + 1, WireProtocol.LENGTH_BYTES)
         )
         for response in self.responses:
-            result += response
+            result += response.get_bytes()
         result += self.tag_buffer
         return result
 
@@ -167,6 +206,21 @@ class FetchResponse(ApiResponse):
 
 def handle_fetch_request(request: FetchRequest) -> ApiResponse:
     correlation_id = request.header.correlation_id
+    responses = [
+        FetchResponseTopic(
+            tpc.topic_id,
+            [
+                FetchResponsePartition(
+                    int_to_bytes(0, 4),
+                    int_to_bytes(Errors.UNKNOWN_TOPIC_ID, 2),
+                    int_to_bytes(0, 8),
+                    int_to_bytes(0, 8),
+                    int_to_bytes(0, 8),
+                )
+            ],
+        )
+        for tpc in request.body.topics
+    ]
     return FetchResponse(
         ResponseHeaderV1(
             correlation_id,
@@ -176,7 +230,7 @@ def handle_fetch_request(request: FetchRequest) -> ApiResponse:
             int_to_bytes(0, WireProtocol.TIME_BYTES),
             int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
             int_to_bytes(0, 4),
-            [],
+            responses,
             int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
         ),
     )
