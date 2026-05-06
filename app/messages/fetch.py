@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from loguru import logger
+
 from app.connection import Buffer
 from app.messages import ApiRequest, ApiResponse
+from app.messages.cluster_metadata_log import ClusterMetadataLogFile, TopicRecordValue, read_cluster_metadata_log
 from app.messages.headers import ResponseHeaderV1
 from app.protocol import Errors, WireProtocol, bytes_to_int, int_to_bytes
 
@@ -204,23 +207,55 @@ class FetchResponse(ApiResponse):
     body: FetchResponseBody
 
 
-def handle_fetch_request(request: FetchRequest) -> ApiResponse:
+def handle_fetch_request(
+        request: FetchRequest, 
+        cluster_metadata: ClusterMetadataLogFile,
+    ) -> ApiResponse:
+    
+    existing_topics_ids = set()
+    for record_batch in cluster_metadata.record_batches:
+        for record in record_batch.records:
+            val = record.value
+            if isinstance(val, TopicRecordValue):
+                existing_topics_ids.add(bytes(val.topic_uuid))
+            
+
     correlation_id = request.header.correlation_id
-    responses = [
-        FetchResponseTopic(
-            tpc.topic_id,
-            [
-                FetchResponsePartition(
-                    int_to_bytes(0, 4),
-                    int_to_bytes(Errors.UNKNOWN_TOPIC_ID, 2),
-                    int_to_bytes(0, 8),
-                    int_to_bytes(0, 8),
-                    int_to_bytes(0, 8),
+    responses = []
+    for tpc in request.body.topics:
+        if bytes(tpc.topic_id) in existing_topics_ids:
+            responses.append(
+                FetchResponseTopic(
+                    tpc.topic_id,
+                    [
+                        FetchResponsePartition(
+                            int_to_bytes(0, 4),
+                            int_to_bytes(Errors.NO_ERROR, 2),
+                            int_to_bytes(0, 8),
+                            int_to_bytes(0, 8),
+                            int_to_bytes(0, 8),
+                        )
+                    ],
                 )
-            ],
-        )
-        for tpc in request.body.topics
-    ]
+            )
+        else:
+            responses.append(
+                FetchResponseTopic(
+                    tpc.topic_id,
+                    [
+                        FetchResponsePartition(
+                            int_to_bytes(0, 4),
+                            int_to_bytes(Errors.UNKNOWN_TOPIC_ID, 2),
+                            int_to_bytes(0, 8),
+                            int_to_bytes(0, 8),
+                            int_to_bytes(0, 8),
+                        )
+                    ],
+                )
+            )
+        
+
+    
     return FetchResponse(
         ResponseHeaderV1(
             correlation_id,

@@ -6,6 +6,7 @@ from loguru import logger
 from app.connection import Buffer
 from app.messages import ApiRequest, ApiResponse
 from app.messages.cluster_metadata_log import (
+    ClusterMetadataLogFile,
     read_cluster_metadata_log,
     TopicRecordValue,
     PartitionRecordValue,
@@ -172,25 +173,14 @@ class DescribeTopicPartitionsResponseV0(ApiResponse):
 
 def handle_describe_topic_partition_request(
     request: DescribeTopicPartitionsRequest,
-    configuration: dict[str, bytes],
+    cluster_metadata: ClusterMetadataLogFile,
 ) -> ApiResponse:
-    try:
-        with open(configuration["cluster_metadata_file"], "rb") as metadata_file:
-            cluster_metadata = metadata_file.read()
-            metadata_buffer = Buffer(len(cluster_metadata), cluster_metadata)
-            metadata_log = read_cluster_metadata_log(metadata_buffer)
-            logger.debug(metadata_log)
-
-    except (FileNotFoundError, FileExistsError) as e:
-        logger.error("Cannot find or read cluster metadata: {}", e)
-    except Exception as e:
-        logger.error("There is an error during getting cluster metadata: {}", e)
 
     requested_topics = {bytes(topic.topic_name) for topic in request.body.topics_array}
 
     topics: dict[bytes, Topic] = {}
 
-    for record_batch in metadata_log.record_batches:
+    for record_batch in cluster_metadata.record_batches:
         for record in record_batch.records:
             val = record.value
 

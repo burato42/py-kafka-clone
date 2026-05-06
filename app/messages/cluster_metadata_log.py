@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 from typing import Self, Union
 
 from app.connection import Buffer
@@ -295,3 +296,19 @@ class UnregisterBrokerRecordValue:
             broker_epoch,
             tagged_fields_count,
         )
+
+
+def get_cluster_metadata() -> ClusterMetadataLogFile:
+    with open("config/config.json") as config_file:
+        configuration = json.loads(config_file.read())
+
+    try:
+        with open(configuration["cluster_metadata_file"], "rb") as metadata_file:
+            cluster_metadata = metadata_file.read()
+            metadata_buffer = Buffer(len(cluster_metadata), cluster_metadata)
+            return read_cluster_metadata_log(metadata_buffer)
+
+    except (FileNotFoundError, FileExistsError) as e:
+        logger.error("Cannot find or read cluster metadata: {}", e)
+    except Exception as e:
+        logger.error("There is an error during getting cluster metadata: {}", e)

@@ -12,6 +12,7 @@ from app.messages.api_version import (
 from app.messages.api_key import (
     ApiKeyConstants,
 )
+from app.messages.cluster_metadata_log import ClusterMetadataLogFile, get_cluster_metadata, read_cluster_metadata_log
 from app.messages.describe_topic_part import (
     handle_describe_topic_partition_request,
     DescribeTopicPartitionsRequest,
@@ -26,11 +27,7 @@ from app.protocol import (
 )
 
 
-with open("config/config.json") as config_file:
-    configuration = json.loads(config_file.read())
-
-
-def handle_client(socket_obj: socket.socket, details: tuple):
+def handle_client(socket_obj: socket.socket, details: tuple, cluster_metadata: ClusterMetadataLogFile):
     logger.info("Connection accepted from {}", details)
     try:
         while True:
@@ -42,7 +39,7 @@ def handle_client(socket_obj: socket.socket, details: tuple):
                 break
 
             buffer = Buffer(size, payload)
-            process_request(socket_obj, buffer)
+            process_request(socket_obj, buffer, cluster_metadata)
 
     except Exception as e:
         logger.error("Error handling client {}: {}", details, e)
@@ -51,7 +48,7 @@ def handle_client(socket_obj: socket.socket, details: tuple):
         logger.info("Connection to {} closed", details)
 
 
-def process_request(socket_obj: socket.socket, buffer: Buffer):
+def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata: ClusterMetadataLogFile):
     raw_api_key = buffer.peek_bytes(WireProtocol.REQUEST_API_KEY_BYTES)
 
     api_key = bytes_to_int(raw_api_key)
@@ -71,10 +68,10 @@ def process_request(socket_obj: socket.socket, buffer: Buffer):
             payload = handle_api_version_request(cast(ApiVersionRequest, request))
         case ApiKeyConstants.DESCRIBE_TOPIC_PARTITION:
             payload = handle_describe_topic_partition_request(
-                cast(DescribeTopicPartitionsRequest, request), configuration
+                cast(DescribeTopicPartitionsRequest, request), cluster_metadata
             )
         case ApiKeyConstants.FETCH:
-            payload = handle_fetch_request(cast(FetchRequest, request))
+            payload = handle_fetch_request(cast(FetchRequest, request), cluster_metadata)
         case _:
             logger.error(
                 "Unsupported API key {} or API version {}", api_key, header.api_version
@@ -96,12 +93,13 @@ def main():
     server = socket.create_server(("localhost", 9092), reuse_port=True)
     server.listen()
 
+    cluster_metadata = get_cluster_metadata()
     while True:
         socket_obj, details = server.accept()
         logger.info("Connection accepted...client details: {}", details)
 
         client_thread = threading.Thread(
-            target=handle_client, args=(socket_obj, details), daemon=True
+            target=handle_client, args=(socket_obj, details, cluster_metadata), daemon=True
         )
         client_thread.start()
 
