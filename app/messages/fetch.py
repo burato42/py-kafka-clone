@@ -227,6 +227,7 @@ def handle_fetch_request(
             for fetch_partition in tpc.partitions:
                 partition_idx = bytes_to_int(fetch_partition.partition)
                 logger.debug("Found partition: {}, topic is {}", partition_idx, topic_name)
+                # TODO Move file template to the configuration
                 log_path = f"/tmp/kraft-combined-logs/{topic_name}-{partition_idx}/00000000000000000000.log"
                 try:
                     with open(log_path, "rb") as f:
@@ -265,8 +266,6 @@ def handle_fetch_request(
                 )
             )
         
-
-    
     return FetchResponse(
         ResponseHeaderV1(
             correlation_id,

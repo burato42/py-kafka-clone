@@ -8,6 +8,7 @@ from app.messages.api_key import (
     api_version_key,
     describe_topic_partiition_key,
     fetch_key,
+    produce_key,
 )
 from app.messages.headers import RequestHeaderV2, ResponseHeaderV0
 from app.protocol import Errors, WireProtocol, int_to_bytes, bytes_to_int
@@ -68,12 +69,12 @@ def handle_api_version_request(request: ApiVersionRequest) -> ApiResponse:
     header: RequestHeaderV2 = request.header
     correlation_id = header.correlation_id
     logger.info("Received API Version request from client ID: {}", header.client_id)
-    if 4 >= bytes_to_int(header.api_version) >= 0:
+    if 11 >= bytes_to_int(header.api_version) >= 0:
         payload = ApiVersionResponse(
             ResponseHeaderV0(correlation_id),
             ApiVersionResponseBody(
                 int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
-                [api_version_key, describe_topic_partiition_key, fetch_key],
+                [api_version_key, describe_topic_partiition_key, fetch_key, produce_key],
                 int_to_bytes(0, WireProtocol.TIME_BYTES),
                 int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
             ),
