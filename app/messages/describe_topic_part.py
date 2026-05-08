@@ -3,11 +3,9 @@ from typing import Optional
 
 from loguru import logger
 
-from app.connection import Buffer
 from app.messages import ApiRequest, ApiResponse
 from app.messages.cluster_metadata_log import (
     ClusterMetadataLogFile,
-    read_cluster_metadata_log,
     TopicRecordValue,
     PartitionRecordValue,
 )

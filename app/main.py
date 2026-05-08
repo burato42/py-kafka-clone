@@ -1,4 +1,3 @@
-import json
 import socket
 import threading
 from typing import cast
@@ -12,7 +11,7 @@ from app.messages.api_version import (
 from app.messages.api_key import (
     ApiKeyConstants,
 )
-from app.messages.cluster_metadata_log import ClusterMetadataLogFile, get_cluster_metadata, read_cluster_metadata_log
+from app.messages.cluster_metadata_log import ClusterMetadataLogFile, get_cluster_metadata
 from app.messages.describe_topic_part import (
     handle_describe_topic_partition_request,
     DescribeTopicPartitionsRequest,

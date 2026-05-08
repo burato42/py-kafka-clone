@@ -13,8 +13,11 @@ class _HasGetBytes(Protocol):
 class ApiRequest(ABC):
     def __init__(self, buffer: Buffer):
         self.buffer = buffer
+        # TODO Need to be refactored. Atm it reads the data from the buffer when we call get_body or get_headers
+        # And this leads to incorrect behavior
+        # Probably we shouldn't allow to do that or just return the saved data
         self.header = self.get_header()
-        self.body = self.get_body()
+        self.body = self.get_body() 
 
     @abstractmethod
     def get_header(self):

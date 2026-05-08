@@ -3,11 +3,11 @@ from typing import Optional
 
 from loguru import logger
 
-from app.connection import Buffer
 from app.messages import ApiRequest, ApiResponse
-from app.messages.cluster_metadata_log import ClusterMetadataLogFile, TopicRecordValue, read_cluster_metadata_log
+from app.messages.cluster_metadata_log import ClusterMetadataLogFile, TopicRecordValue
 from app.messages.headers import ResponseHeaderV1
 from app.protocol import Errors, WireProtocol, bytes_to_int, int_to_bytes
+from app.tools import encode_uvarint, read_compact_nullable_string, read_compact_string
 
 
 @dataclass
@@ -46,18 +46,6 @@ class FetchRequestBody:
     cluster_id: Optional[bytes]
     replica_id: Optional[bytes]
     replica_epoch: Optional[bytes]
-
-
-def _read_compact_string(buffer: Buffer) -> bytes:
-    length = bytes_to_int(buffer.read_bytes(1)) - 1
-    return buffer.read_bytes(length) if length > 0 else b""
-
-
-def _read_compact_nullable_string(buffer: Buffer) -> Optional[bytes]:
-    length = bytes_to_int(buffer.read_bytes(1)) - 1
-    if length < 0:
-        return None
-    return buffer.read_bytes(length) if length > 0 else b""
 
 
 class FetchRequest(ApiRequest):
@@ -106,7 +94,7 @@ class FetchRequest(ApiRequest):
             self.buffer.read_bytes(1)  # forgotten topic tag buffer
             forgotten_topics_data.append(ForgottenTopic(topic_id, fp_partitions))
 
-        rack_id = _read_compact_string(self.buffer)
+        rack_id = read_compact_string(self.buffer)
 
         # Tagged fields
         cluster_id: Optional[bytes] = None
@@ -118,7 +106,7 @@ class FetchRequest(ApiRequest):
             tag = bytes_to_int(self.buffer.read_bytes(1))
             size = bytes_to_int(self.buffer.read_bytes(1))
             if tag == 0:  # cluster_id: COMPACT_NULLABLE_STRING
-                cluster_id = _read_compact_nullable_string(self.buffer)
+                cluster_id = read_compact_nullable_string(self.buffer)
             elif tag == 1:  # replica_state: replica_id (INT32) + replica_epoch (INT64)
                 replica_id = self.buffer.read_bytes(4)
                 replica_epoch = self.buffer.read_bytes(8)
@@ -148,12 +136,18 @@ class FetchResponsePartition:
     high_watermark: bytes    # INT64
     last_stable_offset: bytes  # INT64
     log_start_offset: bytes    # INT64
-    # aborted_transactions: compact array (empty = \x01)
-    # preferred_read_replica: INT32
-    # records: compact nullable bytes (null = \x00)
-    # tag_buffer
+    aborted_transactions: bytes # compact array (empty = \x01)
+    preferred_read_replica: bytes #INT32
+    records: bytes # compact nullable bytes (null = \x00)
+    tag_buffer: bytes
 
     def get_bytes(self) -> bytes:
+        if self.records == b"\x00":
+            records_bytes = b"\x00"
+        else:
+            # compact bytes: uvarint(len+1) followed by data
+            n = len(self.records)
+            records_bytes = encode_uvarint(n + 1) + self.records
         return (
             self.partition_index
             + self.error_code
@@ -162,7 +156,7 @@ class FetchResponsePartition:
             + self.log_start_offset
             + b"\x01"    # aborted_transactions: empty compact array
             + int_to_bytes(0xFFFFFFFF, 4)  # preferred_read_replica: -1 (none)
-            + b"\x00"    # records: null compact bytes
+            + records_bytes
             + b"\x00"    # tag_buffer
         )
 
@@ -212,32 +206,45 @@ def handle_fetch_request(
         cluster_metadata: ClusterMetadataLogFile,
     ) -> ApiResponse:
     
-    existing_topics_ids = set()
+    existing_topics = dict()
+    topic_partitions = dict()
     for record_batch in cluster_metadata.record_batches:
         for record in record_batch.records:
             val = record.value
             if isinstance(val, TopicRecordValue):
-                existing_topics_ids.add(bytes(val.topic_uuid))
-            
+                existing_topics[bytes(val.topic_uuid)] = val.topic_name
+                topic_partitions[bytes(val.topic_uuid)] = []
+
 
     correlation_id = request.header.correlation_id
     responses = []
+
+    
     for tpc in request.body.topics:
-        if bytes(tpc.topic_id) in existing_topics_ids:
-            responses.append(
-                FetchResponseTopic(
-                    tpc.topic_id,
-                    [
-                        FetchResponsePartition(
-                            int_to_bytes(0, 4),
-                            int_to_bytes(Errors.NO_ERROR, 2),
-                            int_to_bytes(0, 8),
-                            int_to_bytes(0, 8),
-                            int_to_bytes(0, 8),
-                        )
-                    ],
-                )
-            )
+        if bytes(tpc.topic_id) in existing_topics:
+            topic_name = existing_topics[bytes(tpc.topic_id)].decode("utf-8")
+            partitions = []
+            for fetch_partition in tpc.partitions:
+                partition_idx = bytes_to_int(fetch_partition.partition)
+                logger.debug("Found partition: {}, topic is {}", partition_idx, topic_name)
+                log_path = f"/tmp/kraft-combined-logs/{topic_name}-{partition_idx}/00000000000000000000.log"
+                try:
+                    with open(log_path, "rb") as f:
+                        log_data = f.read()
+                except OSError:
+                    log_data = None
+                partitions.append(FetchResponsePartition(
+                    fetch_partition.partition,
+                    int_to_bytes(Errors.NO_ERROR, 2),
+                    int_to_bytes(0, 8),
+                    int_to_bytes(0, 8),
+                    int_to_bytes(0, 8),
+                    b"\x01",
+                    int_to_bytes(0xFFFFFFFF, 4),
+                    log_data if log_data is not None else b"\x00",
+                    b"\x00",
+                ))
+            responses.append(FetchResponseTopic(tpc.topic_id, partitions))
         else:
             responses.append(
                 FetchResponseTopic(
@@ -249,6 +256,10 @@ def handle_fetch_request(
                             int_to_bytes(0, 8),
                             int_to_bytes(0, 8),
                             int_to_bytes(0, 8),
+                            b"\x01",
+                            int_to_bytes(0xFFFFFFFF, 4),
+                            b"\x00",
+                            b"\x00",
                         )
                     ],
                 )
