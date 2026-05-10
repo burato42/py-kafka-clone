@@ -17,6 +17,7 @@ from app.messages.describe_topic_part import (
     DescribeTopicPartitionsRequest,
 )
 from app.messages.fetch import FetchRequest, handle_fetch_request
+from app.messages.produce import handle_produce_request
 from app.messages.headers import RequestHeaderV2
 from app.messages.mapping import APIKEYS
 from app.protocol import (
@@ -71,6 +72,8 @@ def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata:
             )
         case ApiKeyConstants.FETCH:
             payload = handle_fetch_request(cast(FetchRequest, request), cluster_metadata)
+        case ApiKeyConstants.PRODUCE:
+            payload = handle_produce_request(request, cluster_metadata)
         case _:
             logger.error(
                 "Unsupported API key {} or API version {}", api_key, header.api_version
