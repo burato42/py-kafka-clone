@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-from typing import Optional
+
+from loguru import logger
 
 from app.messages import ApiRequest, ApiResponse
-from app.messages.cluster_metadata_log import ClusterMetadataLogFile
+from app.messages.cluster_metadata_log import ClusterMetadataLogFile, PartitionRecordValue, TopicRecordValue
 from app.messages.headers import RequestHeaderV2, ResponseHeaderV1
 from app.protocol import Errors, WireProtocol, bytes_to_int, int_to_bytes, int_to_bytes_signed
 from app.tools import encode_uvarint, read_compact_nullable_string, read_compact_string
@@ -149,22 +150,57 @@ def handle_produce_request(
     cluster_metadata: ClusterMetadataLogFile,
 ) -> ApiResponse:
     correlation_id = request.header.correlation_id
+
+    topic_uuid_to_name: dict[bytes, bytes] = {}
+    valid_partitions: set[tuple[bytes, int]] = set()
+    for record_batch in cluster_metadata.record_batches:
+        for record in record_batch.records:
+            val = record.value
+            if isinstance(val, TopicRecordValue):
+                topic_uuid_to_name[bytes(val.topic_uuid)] = bytes(val.topic_name)
+            elif isinstance(val, PartitionRecordValue):
+                topic_name = topic_uuid_to_name.get(bytes(val.topic_uuid))
+                if topic_name is not None:
+                    valid_partitions.add((topic_name, bytes_to_int(val.partition_id)))
+    
+    existing_topics = set(topic_uuid_to_name.values())
+    logger.debug("Existing topics: {}", existing_topics)
+    logger.debug("Valid partitions: {}", valid_partitions)
     responses = []
 
     for tpc in request.body.topics:
+        topic_name = bytes(tpc.topic_name)
+        topic_name_encoded = encode_uvarint(len(topic_name) + 1) + topic_name
         partition_responses = []
         for part in tpc.partitions:
-            partition_responses.append(ProduceResponsePartition(
-                part.partition_index,
-                int_to_bytes(Errors.UNKNOWN_TOPIC_OR_PARTITION, WireProtocol.ERROR_BYTES),
-                int_to_bytes_signed(-1, 8),
-                int_to_bytes_signed(-1, 8),
-                int_to_bytes_signed(-1, 8),
-                b"\x00",
-                b"\x00",
-                int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-            ))
-        topic_name_encoded = encode_uvarint(len(tpc.topic_name) + 1) + tpc.topic_name
+            partition_id = bytes_to_int(part.partition_index)
+            logger.debug("Produce Request topic {}, partition {}", topic_name, partition_id)
+            is_valid = (
+                topic_name in existing_topics
+                and (topic_name, partition_id) in valid_partitions
+            )
+            if is_valid:
+                partition_responses.append(ProduceResponsePartition(
+                    part.partition_index,
+                    int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
+                    int_to_bytes(0, 8),
+                    int_to_bytes_signed(-1, 8),
+                    int_to_bytes(0, 8),
+                    b"\x00",
+                    b"\x00",
+                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                ))
+            else:
+                partition_responses.append(ProduceResponsePartition(
+                    part.partition_index,
+                    int_to_bytes(Errors.UNKNOWN_TOPIC_OR_PARTITION, WireProtocol.ERROR_BYTES),
+                    int_to_bytes_signed(-1, 8),
+                    int_to_bytes_signed(-1, 8),
+                    int_to_bytes_signed(-1, 8),
+                    b"\x00",
+                    b"\x00",
+                    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+                ))
         responses.append(ProduceResponseTopic(
             topic_name_encoded,
             partition_responses,
