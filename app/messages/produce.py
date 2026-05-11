@@ -51,6 +51,9 @@ class ProduceRequestBody:
 
 
 class ProduceRequest(ApiRequest):
+    header: RequestHeaderV2
+    body: ProduceRequestBody
+
     def get_header(self) -> RequestHeaderV2:
         return self.get_header_v2()
 
@@ -190,6 +193,9 @@ def handle_produce_request(
                     b"\x00",
                     int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                 ))
+                log_path = f"/tmp/kraft-combined-logs/{topic_name.decode("utf-8")}-{part.partition_index.decode("utf-8")}/00000000000000000000.log" # FIXME
+                with open(log_path, "ab") as f:
+                    f.write(part.record_batches_raw)
             else:
                 partition_responses.append(ProduceResponsePartition(
                     part.partition_index,
