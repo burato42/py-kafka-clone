@@ -5,7 +5,7 @@ from loguru import logger
 
 from app.messages import ApiRequest, ApiResponse
 from app.messages.cluster_metadata_log import ClusterMetadataLogFile, TopicRecordValue
-from app.messages.headers import ResponseHeaderV1
+from app.messages.headers import RequestHeaderV2, ResponseHeaderV1
 from app.protocol import Errors, WireProtocol, bytes_to_int, int_to_bytes
 from app.tools import encode_uvarint, read_compact_nullable_string, read_compact_string
 
@@ -49,7 +49,10 @@ class FetchRequestBody:
 
 
 class FetchRequest(ApiRequest):
-    def get_header(self):
+    header: RequestHeaderV2
+    body: FetchRequestBody
+
+    def get_header(self) -> RequestHeaderV2:
         return self.get_header_v2()
 
     def get_body(self) -> FetchRequestBody:

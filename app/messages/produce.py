@@ -3,33 +3,16 @@ from dataclasses import dataclass
 from loguru import logger
 
 from app.messages import ApiRequest, ApiResponse
-from app.messages.cluster_metadata_log import ClusterMetadataLogFile, PartitionRecordValue, TopicRecordValue
+from app.messages.cluster_metadata_log import ClusterMetadataLogFile, PartitionRecordValue, RecordBatch, TopicRecordValue
 from app.messages.headers import RequestHeaderV2, ResponseHeaderV1
 from app.protocol import Errors, WireProtocol, bytes_to_int, int_to_bytes, int_to_bytes_signed
-from app.tools import encode_uvarint, read_compact_nullable_string, read_compact_string
-
-
-@dataclass
-class ProduceRecordBatch:
-    base_offset: bytes
-    batch_size: bytes
-    partition_leader_epoch: bytes
-    magic_byte: bytes
-    crc: bytes
-    attributes: bytes
-    last_offset_delta: bytes
-    first_timestamp: bytes
-    last_timestamp: bytes
-    producer_id: bytes
-    producer_epoch: bytes
-    base_sequence: bytes
-    records: bytes  # raw bytes of the records array
+from app.tools import encode_uvarint, read_compact_nullable_string, read_compact_string, read_uvarint
 
 
 @dataclass
 class ProducePartition:
     partition_index: bytes
-    record_batches: list[ProduceRecordBatch]
+    record_batches: list[RecordBatch]
     record_batches_raw: bytes  # unparsed; populated until full batch parsing is implemented
     tag_buffer: bytes
 
@@ -70,10 +53,11 @@ class ProduceRequest(ApiRequest):
             partitions = []
             for _ in range(partitions_count):
                 partition_index = self.buffer.read_bytes(4)
-                record_batches_size = bytes_to_int(self.buffer.read_bytes(4))
+                record_batches_size = read_uvarint(self.buffer) - 1
                 record_batches_raw = self.buffer.read_bytes(record_batches_size)
+                record_batches = []
                 self.buffer.read_bytes(1)  # partition tag buffer
-                partitions.append(ProducePartition(partition_index, [], record_batches_raw, b"\x00"))
+                partitions.append(ProducePartition(partition_index, record_batches, record_batches_raw, b"\x00"))
             self.buffer.read_bytes(1)  # topic tag buffer
             topics.append(ProduceTopic(topic_name, partitions, b"\x00"))
 
@@ -193,7 +177,8 @@ def handle_produce_request(
                     b"\x00",
                     int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                 ))
-                log_path = f"/tmp/kraft-combined-logs/{topic_name.decode("utf-8")}-{part.partition_index.decode("utf-8")}/00000000000000000000.log" # FIXME
+                log_path = f"/tmp/kraft-combined-logs/{topic_name.decode("utf-8")}-{bytes_to_int(part.partition_index)}/00000000000000000000.log" # FIXME
+
                 with open(log_path, "ab") as f:
                     f.write(part.record_batches_raw)
             else:

@@ -13,6 +13,18 @@ def encode_uvarint(value: int) -> bytes:
     result += bytes([value])
     return result
 
+def read_uvarint(buffer: Buffer) -> int:
+    result = 0
+    shift = 0
+    while True:
+        b = bytes_to_int(buffer.read_bytes(1))
+        result |= (b & 0x7F) << shift
+        shift += 7
+        if not (b & 0x80):
+            break
+    return result
+
+
 def read_compact_string(buffer: Buffer) -> bytes:
     length = bytes_to_int(buffer.read_bytes(1)) - 1
     return buffer.read_bytes(length) if length > 0 else b""
