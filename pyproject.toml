@@ -8,5 +8,16 @@ dependencies = [
     "ruff==0.15.1",
 ]
 
+[tool.uv]
+exclude-newer = "1 week"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.mypy]
 ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
