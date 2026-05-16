@@ -205,8 +205,9 @@ class FetchResponse(ApiResponse):
 
 
 def handle_fetch_request(
-        request: FetchRequest, 
+        request: FetchRequest,
         cluster_metadata: ClusterMetadataLogFile,
+        partition_log_dir: str,
     ) -> ApiResponse:
     
     existing_topics = dict()
@@ -230,8 +231,7 @@ def handle_fetch_request(
             for fetch_partition in tpc.partitions:
                 partition_idx = bytes_to_int(fetch_partition.partition)
                 logger.debug("Found partition: {}, topic is {}", partition_idx, topic_name)
-                # TODO Move file template to the configuration
-                log_path = f"/tmp/kraft-combined-logs/{topic_name}-{partition_idx}/00000000000000000000.log"
+                log_path = f"{partition_log_dir}/{topic_name}-{partition_idx}/00000000000000000000.log"
                 try:
                     with open(log_path, "rb") as f:
                         log_data = f.read()

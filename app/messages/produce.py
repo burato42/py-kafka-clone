@@ -135,6 +135,7 @@ class ProduceResponse(ApiResponse):
 def handle_produce_request(
     request: ProduceRequest,
     cluster_metadata: ClusterMetadataLogFile,
+    partition_log_dir: str,
 ) -> ApiResponse:
     correlation_id = request.header.correlation_id
 
@@ -177,7 +178,7 @@ def handle_produce_request(
                     b"\x00",
                     int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                 ))
-                log_path = f"/tmp/kraft-combined-logs/{topic_name.decode("utf-8")}-{bytes_to_int(part.partition_index)}/00000000000000000000.log" # FIXME
+                log_path = f"{partition_log_dir}/{topic_name.decode('utf-8')}-{bytes_to_int(part.partition_index)}/00000000000000000000.log"
 
                 with open(log_path, "ab") as f:
                     f.write(part.record_batches_raw)

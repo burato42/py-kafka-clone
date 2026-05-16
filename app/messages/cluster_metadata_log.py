@@ -298,10 +298,13 @@ class UnregisterBrokerRecordValue:
         )
 
 
-def get_cluster_metadata() -> ClusterMetadataLogFile:
+def get_config() -> dict:
     with open("config/config.json") as config_file:
-        configuration = json.loads(config_file.read())
+        return json.loads(config_file.read())
 
+
+def get_cluster_metadata() -> ClusterMetadataLogFile:
+    configuration = get_config()
     try:
         with open(configuration["cluster_metadata_file"], "rb") as metadata_file:
             cluster_metadata = metadata_file.read()
