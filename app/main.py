@@ -1,3 +1,4 @@
+import argparse
 import socket
 import threading
 from typing import cast
@@ -92,11 +93,15 @@ def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config/dev.json")
+    args, _ = parser.parse_known_args()
+
     server = socket.create_server(("localhost", 9092), reuse_port=True)
     server.listen()
 
-    config = get_config()
-    cluster_metadata = get_cluster_metadata()
+    config = get_config(args.config)
+    cluster_metadata = get_cluster_metadata(args.config)
     partition_log_dir = config["partition_log_dir"]
     while True:
         socket_obj, details = server.accept()
