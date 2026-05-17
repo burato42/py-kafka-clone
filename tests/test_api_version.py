@@ -11,7 +11,7 @@ def build_api_version_request_bytes(
     body_client_id: bytes = b"my-app",
     software_version: bytes = b"1.0.0",
 ) -> bytes:
-    # RequestHeaderV2
+    # RequestHeader
     header = (
         int_to_bytes(18, WireProtocol.REQUEST_API_KEY_BYTES)   # api_key=18 (API_VERSION)
         + int_to_bytes(api_version, WireProtocol.REQUEST_API_VERSION_BYTES)
@@ -20,11 +20,11 @@ def build_api_version_request_bytes(
         + header_client_id
         + b"\x00"  # tag_buffer
     )
-    # Body: compact-style but uses 1-byte length prefix (not varint)
+    # Body: compact string encoding — length prefix is len+1 (uvarint)
     body = (
-        bytes([len(body_client_id)])
+        bytes([len(body_client_id) + 1])
         + body_client_id
-        + bytes([len(software_version)])
+        + bytes([len(software_version) + 1])
         + software_version
         + b"\x00"  # tag_buffer
     )

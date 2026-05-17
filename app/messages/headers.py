@@ -15,7 +15,7 @@ class ResponseHeaderV1:
         return b"".join([self.correlation_id, self.tag_buffer])
 
 
-class RequestHeaderV2:
+class RequestHeader:
     def __init__(
         self,
         api_key: bytes,

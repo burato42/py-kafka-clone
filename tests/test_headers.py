@@ -24,13 +24,13 @@ def build_request_header_v2_bytes(
 
 class _ConcreteRequest(ApiRequest):
     def get_header(self):
-        return self.get_header_v2()
+        return self.read_header_flexible()
 
     def get_body(self):
         return None
 
 
-class TestRequestHeaderV2Parsing:
+class TestRequestHeaderParsing:
     def test_api_key_parsed(self):
         raw = build_request_header_v2_bytes(api_key=18)
         req = _ConcreteRequest(make_buffer(raw))

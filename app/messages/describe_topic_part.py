@@ -21,7 +21,7 @@ from app.protocol import (
 
 class DescribeTopicPartitionsRequest(ApiRequest):
     def get_header(self):
-        return self.get_header_v2()
+        return self.read_header_flexible()
 
     def get_body(self):
         # TODO Implement logic for compact arrays

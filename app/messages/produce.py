@@ -4,7 +4,7 @@ from loguru import logger
 
 from app.messages import ApiRequest, ApiResponse
 from app.messages.cluster_metadata_log import ClusterMetadataLogFile, PartitionRecordValue, RecordBatch, TopicRecordValue
-from app.messages.headers import RequestHeaderV2, ResponseHeaderV1
+from app.messages.headers import RequestHeader, ResponseHeaderV1
 from app.protocol import Errors, WireProtocol, bytes_to_int, int_to_bytes, int_to_bytes_signed
 from app.tools import encode_uvarint, read_compact_nullable_string, read_compact_string, read_uvarint
 
@@ -34,11 +34,11 @@ class ProduceRequestBody:
 
 
 class ProduceRequest(ApiRequest):
-    header: RequestHeaderV2
+    header: RequestHeader
     body: ProduceRequestBody
 
-    def get_header(self) -> RequestHeaderV2:
-        return self.get_header_v2()
+    def get_header(self) -> RequestHeader:
+        return self.read_header_flexible()
 
     def get_body(self) -> ProduceRequestBody:
         transactional_id = read_compact_nullable_string(self.buffer)

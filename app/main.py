@@ -18,8 +18,10 @@ from app.messages.describe_topic_part import (
     DescribeTopicPartitionsRequest,
 )
 from app.messages.fetch import FetchRequest, handle_fetch_request
+from app.messages.init_producer_id import InitProducerIdRequest, handle_init_producer_id_request
+from app.messages.metadata import MetadataRequest, handle_metadata_request
 from app.messages.produce import handle_produce_request
-from app.messages.headers import RequestHeaderV2
+from app.messages.headers import RequestHeader
 from app.messages.mapping import APIKEYS
 from app.protocol import (
     WireProtocol,
@@ -40,10 +42,11 @@ def handle_client(socket_obj: socket.socket, details: tuple, cluster_metadata: C
                 break
 
             buffer = Buffer(size, payload)
+            logger.debug("Received {} bytes: {}", size, payload.hex())
             process_request(socket_obj, buffer, cluster_metadata, partition_log_dir)
 
     except Exception as e:
-        logger.error("Error handling client {}: {}", details, e)
+        logger.exception("Error handling client {}: {}", details, e)
     finally:
         socket_obj.close()
         logger.info("Connection to {} closed", details)
@@ -61,7 +64,7 @@ def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata:
     logger.info("Request API key: {}; Request type: {}", api_key, APIKEYS[api_key])
     kls = APIKEYS[api_key]
     request = kls(buffer)
-    header: RequestHeaderV2 = request.header
+    header: RequestHeader = request.header
     payload = None
 
     match api_key:
@@ -73,6 +76,10 @@ def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata:
             )
         case ApiKeyConstants.FETCH:
             payload = handle_fetch_request(cast(FetchRequest, request), cluster_metadata, partition_log_dir)
+        case ApiKeyConstants.INIT_PRODUCER_ID:
+            payload = handle_init_producer_id_request(cast(InitProducerIdRequest, request))
+        case ApiKeyConstants.METADATA:
+            payload = handle_metadata_request(cast(MetadataRequest, request), cluster_metadata)
         case ApiKeyConstants.PRODUCE:
             payload = handle_produce_request(request, cluster_metadata, partition_log_dir)
         case _:
@@ -86,10 +93,9 @@ def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata:
         )
         return
 
-    socket_obj.sendall(
-        int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES)
-        + payload.get_bytes()
-    )
+    response_bytes = int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES) + payload.get_bytes()
+    logger.debug("Sending {} bytes: {}", len(response_bytes), response_bytes.hex())
+    socket_obj.sendall(response_bytes)
 
 
 def main():
