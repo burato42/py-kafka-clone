@@ -1,6 +1,10 @@
-
 from tests.conftest import make_buffer
-from app.tools import encode_uvarint, read_uvarint, read_compact_string, read_compact_nullable_string
+from app.tools import (
+    encode_uvarint,
+    read_uvarint,
+    read_compact_string,
+    read_compact_nullable_string,
+)
 
 
 class TestUvarint:

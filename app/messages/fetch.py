@@ -77,14 +77,16 @@ class FetchRequest(ApiRequest):
                 log_start_offset = self.buffer.read_bytes(8)
                 partition_max_bytes = self.buffer.read_bytes(4)
                 self.buffer.read_bytes(1)  # partition tag buffer
-                partitions.append(FetchPartition(
-                    partition,
-                    current_leader_epoch,
-                    fetch_offset,
-                    last_fetched_epoch,
-                    log_start_offset,
-                    partition_max_bytes,
-                ))
+                partitions.append(
+                    FetchPartition(
+                        partition,
+                        current_leader_epoch,
+                        fetch_offset,
+                        last_fetched_epoch,
+                        log_start_offset,
+                        partition_max_bytes,
+                    )
+                )
             self.buffer.read_bytes(1)  # topic tag buffer
             topics.append(FetchTopic(topic_id, partitions))
 
@@ -134,14 +136,14 @@ class FetchRequest(ApiRequest):
 
 @dataclass
 class FetchResponsePartition:
-    partition_index: bytes   # INT32
-    error_code: bytes        # INT16
-    high_watermark: bytes    # INT64
+    partition_index: bytes  # INT32
+    error_code: bytes  # INT16
+    high_watermark: bytes  # INT64
     last_stable_offset: bytes  # INT64
-    log_start_offset: bytes    # INT64
-    aborted_transactions: bytes # compact array (empty = \x01)
-    preferred_read_replica: bytes #INT32
-    records: bytes # compact nullable bytes (null = \x00)
+    log_start_offset: bytes  # INT64
+    aborted_transactions: bytes  # compact array (empty = \x01)
+    preferred_read_replica: bytes  # INT32
+    records: bytes  # compact nullable bytes (null = \x00)
     tag_buffer: bytes
 
     def get_bytes(self) -> bytes:
@@ -157,10 +159,10 @@ class FetchResponsePartition:
             + self.high_watermark
             + self.last_stable_offset
             + self.log_start_offset
-            + b"\x01"    # aborted_transactions: empty compact array
+            + b"\x01"  # aborted_transactions: empty compact array
             + int_to_bytes(0xFFFFFFFF, 4)  # preferred_read_replica: -1 (none)
             + records_bytes
-            + b"\x00"    # tag_buffer
+            + b"\x00"  # tag_buffer
         )
 
 
@@ -170,7 +172,9 @@ class FetchResponseTopic:
     partitions: list[FetchResponsePartition]
 
     def get_bytes(self) -> bytes:
-        result = self.topic_id + int_to_bytes(len(self.partitions) + 1, WireProtocol.LENGTH_BYTES)
+        result = self.topic_id + int_to_bytes(
+            len(self.partitions) + 1, WireProtocol.LENGTH_BYTES
+        )
         for part in self.partitions:
             result += part.get_bytes()
         result += b"\x00"  # tag_buffer
@@ -205,11 +209,11 @@ class FetchResponse(ApiResponse):
 
 
 def handle_fetch_request(
-        request: FetchRequest,
-        cluster_metadata: ClusterMetadataLogFile,
-        partition_log_dir: str,
-    ) -> ApiResponse:
-    
+    request: FetchRequest,
+    cluster_metadata: ClusterMetadataLogFile,
+    partition_log_dir: str,
+) -> ApiResponse:
+
     existing_topics = dict()
     topic_partitions = dict()
     for record_batch in cluster_metadata.record_batches:
@@ -219,35 +223,37 @@ def handle_fetch_request(
                 existing_topics[bytes(val.topic_uuid)] = val.topic_name
                 topic_partitions[bytes(val.topic_uuid)] = []
 
-
     correlation_id = request.header.correlation_id
     responses = []
 
-    
     for tpc in request.body.topics:
         if bytes(tpc.topic_id) in existing_topics:
             topic_name = existing_topics[bytes(tpc.topic_id)].decode("utf-8")
             partitions = []
             for fetch_partition in tpc.partitions:
                 partition_idx = bytes_to_int(fetch_partition.partition)
-                logger.debug("Found partition: {}, topic is {}", partition_idx, topic_name)
+                logger.debug(
+                    "Found partition: {}, topic is {}", partition_idx, topic_name
+                )
                 log_path = f"{partition_log_dir}/{topic_name}-{partition_idx}/00000000000000000000.log"
                 try:
                     with open(log_path, "rb") as f:
                         log_data = f.read()
                 except OSError:
                     log_data = None
-                partitions.append(FetchResponsePartition(
-                    fetch_partition.partition,
-                    int_to_bytes(Errors.NO_ERROR, 2),
-                    int_to_bytes(0, 8),
-                    int_to_bytes(0, 8),
-                    int_to_bytes(0, 8),
-                    b"\x01",
-                    int_to_bytes(0xFFFFFFFF, 4),
-                    log_data if log_data is not None else b"\x00",
-                    b"\x00",
-                ))
+                partitions.append(
+                    FetchResponsePartition(
+                        fetch_partition.partition,
+                        int_to_bytes(Errors.NO_ERROR, 2),
+                        int_to_bytes(0, 8),
+                        int_to_bytes(0, 8),
+                        int_to_bytes(0, 8),
+                        b"\x01",
+                        int_to_bytes(0xFFFFFFFF, 4),
+                        log_data if log_data is not None else b"\x00",
+                        b"\x00",
+                    )
+                )
             responses.append(FetchResponseTopic(tpc.topic_id, partitions))
         else:
             responses.append(
@@ -268,7 +274,7 @@ def handle_fetch_request(
                     ],
                 )
             )
-        
+
     return FetchResponse(
         ResponseHeaderV1(
             correlation_id,

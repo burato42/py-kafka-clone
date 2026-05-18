@@ -1,4 +1,3 @@
-import pytest
 from tests.conftest import make_buffer
 from app.messages import ApiRequest
 from app.messages.headers import ResponseHeaderV0, ResponseHeaderV1
@@ -58,7 +57,9 @@ class TestRequestHeaderParsing:
 
     def test_get_bytes_contains_all_fields(self):
         client_id = b"cli"
-        raw = build_request_header_v2_bytes(api_key=18, api_version=4, correlation_id=42, client_id=client_id)
+        raw = build_request_header_v2_bytes(
+            api_key=18, api_version=4, correlation_id=42, client_id=client_id
+        )
         req = _ConcreteRequest(make_buffer(raw))
         reassembled = req.header.get_bytes()
         # get_bytes() stores the raw bytes as parsed (client_id without its length prefix)

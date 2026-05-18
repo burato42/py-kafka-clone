@@ -33,6 +33,10 @@ def bytes_to_int(data: bytes) -> int:
     return int.from_bytes(data, "big")
 
 
+def bytes_to_int_signed(data: bytes) -> int:
+    return int.from_bytes(data, "big", signed=True)
+
+
 def int_to_bytes(number: int, size: int) -> bytes:
     return number.to_bytes(size, "big")
 

@@ -71,7 +71,14 @@ def handle_api_version_request(request: ApiVersionRequest) -> ApiResponse:
             ResponseHeaderV0(correlation_id),
             ApiVersionResponseBody(
                 int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
-                [api_version_key, describe_topic_partiition_key, fetch_key, init_producer_id_key, metadata_key, produce_key],
+                [
+                    api_version_key,
+                    describe_topic_partiition_key,
+                    fetch_key,
+                    init_producer_id_key,
+                    metadata_key,
+                    produce_key,
+                ],
                 int_to_bytes(0, WireProtocol.TIME_BYTES),
                 int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
             ),

@@ -12,13 +12,20 @@ from app.messages.api_version import (
 from app.messages.api_key import (
     ApiKeyConstants,
 )
-from app.messages.cluster_metadata_log import ClusterMetadataLogFile, get_cluster_metadata, get_config
+from app.messages.cluster_metadata_log import (
+    ClusterMetadataLogFile,
+    get_cluster_metadata,
+    get_config,
+)
 from app.messages.describe_topic_part import (
     handle_describe_topic_partition_request,
     DescribeTopicPartitionsRequest,
 )
 from app.messages.fetch import FetchRequest, handle_fetch_request
-from app.messages.init_producer_id import InitProducerIdRequest, handle_init_producer_id_request
+from app.messages.init_producer_id import (
+    InitProducerIdRequest,
+    handle_init_producer_id_request,
+)
 from app.messages.metadata import MetadataRequest, handle_metadata_request
 from app.messages.produce import handle_produce_request
 from app.messages.headers import RequestHeader
@@ -30,7 +37,12 @@ from app.protocol import (
 )
 
 
-def handle_client(socket_obj: socket.socket, details: tuple, cluster_metadata: ClusterMetadataLogFile, partition_log_dir: str):
+def handle_client(
+    socket_obj: socket.socket,
+    details: tuple,
+    cluster_metadata: ClusterMetadataLogFile,
+    partition_log_dir: str,
+):
     logger.info("Connection accepted from {}", details)
     try:
         while True:
@@ -52,7 +64,12 @@ def handle_client(socket_obj: socket.socket, details: tuple, cluster_metadata: C
         logger.info("Connection to {} closed", details)
 
 
-def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata: ClusterMetadataLogFile, partition_log_dir: str):
+def process_request(
+    socket_obj: socket.socket,
+    buffer: Buffer,
+    cluster_metadata: ClusterMetadataLogFile,
+    partition_log_dir: str,
+):
     raw_api_key = buffer.peek_bytes(WireProtocol.REQUEST_API_KEY_BYTES)
 
     api_key = bytes_to_int(raw_api_key)
@@ -75,13 +92,21 @@ def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata:
                 cast(DescribeTopicPartitionsRequest, request), cluster_metadata
             )
         case ApiKeyConstants.FETCH:
-            payload = handle_fetch_request(cast(FetchRequest, request), cluster_metadata, partition_log_dir)
+            payload = handle_fetch_request(
+                cast(FetchRequest, request), cluster_metadata, partition_log_dir
+            )
         case ApiKeyConstants.INIT_PRODUCER_ID:
-            payload = handle_init_producer_id_request(cast(InitProducerIdRequest, request))
+            payload = handle_init_producer_id_request(
+                cast(InitProducerIdRequest, request)
+            )
         case ApiKeyConstants.METADATA:
-            payload = handle_metadata_request(cast(MetadataRequest, request), cluster_metadata)
+            payload = handle_metadata_request(
+                cast(MetadataRequest, request), cluster_metadata
+            )
         case ApiKeyConstants.PRODUCE:
-            payload = handle_produce_request(request, cluster_metadata, partition_log_dir)
+            payload = handle_produce_request(
+                request, cluster_metadata, partition_log_dir
+            )
         case _:
             logger.error(
                 "Unsupported API key {} or API version {}", api_key, header.api_version
@@ -93,7 +118,10 @@ def process_request(socket_obj: socket.socket, buffer: Buffer, cluster_metadata:
         )
         return
 
-    response_bytes = int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES) + payload.get_bytes()
+    response_bytes = (
+        int_to_bytes(payload.get_size(), WireProtocol.MESSAGE_SIZE_BYTES)
+        + payload.get_bytes()
+    )
     logger.debug("Sending {} bytes: {}", len(response_bytes), response_bytes.hex())
     socket_obj.sendall(response_bytes)
 
@@ -114,7 +142,9 @@ def main():
         logger.info("Connection accepted...client details: {}", details)
 
         client_thread = threading.Thread(
-            target=handle_client, args=(socket_obj, details, cluster_metadata, partition_log_dir), daemon=True
+            target=handle_client,
+            args=(socket_obj, details, cluster_metadata, partition_log_dir),
+            daemon=True,
         )
         client_thread.start()
 

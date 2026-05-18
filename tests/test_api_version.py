@@ -1,4 +1,3 @@
-import pytest
 from tests.conftest import make_buffer
 from app.messages.api_version import ApiVersionRequest, handle_api_version_request
 from app.protocol import int_to_bytes, bytes_to_int, WireProtocol, Errors
@@ -13,7 +12,7 @@ def build_api_version_request_bytes(
 ) -> bytes:
     # RequestHeader
     header = (
-        int_to_bytes(18, WireProtocol.REQUEST_API_KEY_BYTES)   # api_key=18 (API_VERSION)
+        int_to_bytes(18, WireProtocol.REQUEST_API_KEY_BYTES)  # api_key=18 (API_VERSION)
         + int_to_bytes(api_version, WireProtocol.REQUEST_API_VERSION_BYTES)
         + int_to_bytes(correlation_id, WireProtocol.CORRRELATION_ID_BYTES)
         + int_to_bytes(len(header_client_id), WireProtocol.CLIENT_ID_BYTES)

@@ -1,4 +1,3 @@
-import pytest
 from app.protocol import bytes_to_int, int_to_bytes, int_to_bytes_signed
 
 

@@ -303,7 +303,9 @@ def get_config(config_path: str = "config/dev.json") -> dict:
         return json.loads(config_file.read())
 
 
-def get_cluster_metadata(config_path: str = "config/dev.json") -> ClusterMetadataLogFile:
+def get_cluster_metadata(
+    config_path: str = "config/dev.json",
+) -> ClusterMetadataLogFile:
     configuration = get_config(config_path)
     try:
         with open(configuration["cluster_metadata_file"], "rb") as metadata_file:

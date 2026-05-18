@@ -61,14 +61,14 @@ def _encode_array(items: list[bytes]) -> bytes:
 @dataclass
 class MetadataResponseBody:
     api_version: int
-    brokers: list[tuple]   # (node_id, host, port)
+    brokers: list[tuple]  # (node_id, host, port)
     cluster_id: bytes
     controller_id: int
-    topics: list[dict]     # parsed topic+partition info
+    topics: list[dict]  # parsed topic+partition info
 
     def get_bytes(self) -> bytes:
         """
-        Diffeernt content for different versions. 
+        Different content for different versions.
         It might be processed using OOP-style approach but for now it's sufficient.
         """
         result = b""
@@ -79,9 +79,13 @@ class MetadataResponseBody:
         # brokers array
         broker_entries = []
         for node_id, host, port in self.brokers:
-            entry = int_to_bytes(node_id, 4) + _encode_string(host) + int_to_bytes(port, 4)
+            entry = (
+                int_to_bytes(node_id, 4) + _encode_string(host) + int_to_bytes(port, 4)
+            )
             if self.api_version >= 1:
-                entry += _encode_string(b"")  # rack = null string, but null is -1; use empty
+                entry += _encode_string(
+                    b""
+                )  # rack = null string, but null is -1; use empty
             broker_entries.append(entry)
         result += _encode_array(broker_entries)
 
@@ -93,10 +97,7 @@ class MetadataResponseBody:
 
         topic_entries = []
         for t in self.topics:
-            entry = (
-                int_to_bytes(t["error_code"], 2)
-                + _encode_string(t["name"])
-            )
+            entry = int_to_bytes(t["error_code"], 2) + _encode_string(t["name"])
             if self.api_version >= 1:
                 entry += int_to_bytes(0, 1)  # is_internal = false
             partitions = []
@@ -140,7 +141,7 @@ def handle_metadata_request(
     api_version = bytes_to_int(request.header.api_version)
     requested = request.body.topics  # None = all
 
-    topic_names: dict[bytes, bytes] = {}   # uuid -> name
+    topic_names: dict[bytes, bytes] = {}  # uuid -> name
     topic_partitions: dict[bytes, list] = {}  # uuid -> list of partition dicts
 
     for batch in cluster_metadata.record_batches:
@@ -157,32 +158,38 @@ def handle_metadata_request(
                 if uuid in topic_names:
                     replicas = [bytes_to_int(r) for r in val.replica_array]
                     isr = [bytes_to_int(r) for r in val.in_sync_replica_array]
-                    topic_partitions[uuid].append({
-                        "error_code": Errors.NO_ERROR,
-                        "partition_id": bytes_to_int(val.partition_id),
-                        "leader": BROKER_NODE_ID,
-                        "leader_epoch": bytes_to_int(val.leader_epoch),
-                        "replicas": replicas if replicas else [BROKER_NODE_ID],
-                        "isr": isr if isr else [BROKER_NODE_ID],
-                    })
+                    topic_partitions[uuid].append(
+                        {
+                            "error_code": Errors.NO_ERROR,
+                            "partition_id": bytes_to_int(val.partition_id),
+                            "leader": BROKER_NODE_ID,
+                            "leader_epoch": bytes_to_int(val.leader_epoch),
+                            "replicas": replicas if replicas else [BROKER_NODE_ID],
+                            "isr": isr if isr else [BROKER_NODE_ID],
+                        }
+                    )
 
     topics = []
     for uuid, name in topic_names.items():
-        topics.append({
-            "error_code": Errors.NO_ERROR,
-            "name": name,
-            "partitions": topic_partitions[uuid],
-        })
+        topics.append(
+            {
+                "error_code": Errors.NO_ERROR,
+                "name": name,
+                "partitions": topic_partitions[uuid],
+            }
+        )
 
     if requested is not None:
         found = {t["name"] for t in topics}
         for name in requested:
             if name not in found:
-                topics.append({
-                    "error_code": Errors.UNKNOWN_TOPIC_OR_PARTITION,
-                    "name": name,
-                    "partitions": [],
-                })
+                topics.append(
+                    {
+                        "error_code": Errors.UNKNOWN_TOPIC_OR_PARTITION,
+                        "name": name,
+                        "partitions": [],
+                    }
+                )
 
     return MetadataResponse(
         ResponseHeaderV0(request.header.correlation_id),

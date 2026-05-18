@@ -13,6 +13,7 @@ def encode_uvarint(value: int) -> bytes:
     result += bytes([value])
     return result
 
+
 def read_uvarint(buffer: Buffer) -> int:
     result = 0
     shift = 0

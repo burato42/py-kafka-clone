@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from app.messages import ApiRequest, ApiResponse
 from app.messages.headers import RequestHeader, ResponseHeaderV1
 from app.protocol import Errors, WireProtocol, int_to_bytes
-from app.tools import read_compact_nullable_string, read_uvarint
+from app.tools import read_compact_nullable_string
 
 
 @dataclass
@@ -61,7 +61,9 @@ class InitProducerIdResponse(ApiResponse):
     body: InitProducerIdResponseBody
 
 
-def handle_init_producer_id_request(request: InitProducerIdRequest) -> InitProducerIdResponse:
+def handle_init_producer_id_request(
+    request: InitProducerIdRequest,
+) -> InitProducerIdResponse:
     return InitProducerIdResponse(
         ResponseHeaderV1(
             request.header.correlation_id,
@@ -70,8 +72,8 @@ def handle_init_producer_id_request(request: InitProducerIdRequest) -> InitProdu
         InitProducerIdResponseBody(
             int_to_bytes(0, WireProtocol.TIME_BYTES),
             int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
-            int_to_bytes(0, 8),   # producer_id: INT64
-            int_to_bytes(0, 2),   # producer_epoch: INT16
+            int_to_bytes(0, 8),  # producer_id: INT64
+            int_to_bytes(0, 2),  # producer_epoch: INT16
             int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
         ),
     )
