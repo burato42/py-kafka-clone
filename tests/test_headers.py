@@ -1,6 +1,6 @@
 from tests.conftest import make_buffer
-from app.messages import ApiRequest
-from app.messages.headers import ResponseHeaderV0, ResponseHeaderV1
+from app.messages import ApiRequest, ApiResponse
+from app.messages.headers import RequestHeader, ResponseHeaderV0, ResponseHeaderV1
 from app.protocol import int_to_bytes, WireProtocol
 
 
@@ -27,6 +27,30 @@ class _ConcreteRequest(ApiRequest):
 
     def get_body(self):
         return None
+
+
+class _NonFlexibleRequest(ApiRequest):
+    def get_header(self):
+        return self.read_header()
+
+    def get_body(self):
+        return None
+
+
+def build_request_header_v1_bytes(
+    api_key: int = 18,
+    api_version: int = 4,
+    correlation_id: int = 42,
+    client_id: bytes = b"test-client",
+) -> bytes:
+    # RequestHeaderV1 — no tag buffer
+    return (
+        int_to_bytes(api_key, WireProtocol.REQUEST_API_KEY_BYTES)
+        + int_to_bytes(api_version, WireProtocol.REQUEST_API_VERSION_BYTES)
+        + int_to_bytes(correlation_id, WireProtocol.CORRRELATION_ID_BYTES)
+        + int_to_bytes(len(client_id), WireProtocol.CLIENT_ID_BYTES)
+        + client_id
+    )
 
 
 class TestRequestHeaderParsing:
@@ -90,3 +114,53 @@ class TestResponseHeaderV1:
     def test_length(self):
         h = ResponseHeaderV1(b"\x00\x00\x00\x05", b"\x00")
         assert len(h.get_bytes()) == 5
+
+
+class TestNonFlexibleRequestHeader:
+    def test_api_key_parsed(self):
+        raw = build_request_header_v1_bytes(api_key=1)
+        req = _NonFlexibleRequest(make_buffer(raw))
+        assert req.header.api_key == int_to_bytes(1, 2)
+
+    def test_correlation_id_parsed(self):
+        raw = build_request_header_v1_bytes(correlation_id=7)
+        req = _NonFlexibleRequest(make_buffer(raw))
+        assert req.header.correlation_id == int_to_bytes(7, 4)
+
+    def test_tag_buffer_defaults_to_zero(self):
+        raw = build_request_header_v1_bytes()
+        req = _NonFlexibleRequest(make_buffer(raw))
+        assert req.header.tag_buffer == b"\x00"
+
+    def test_client_id_parsed(self):
+        raw = build_request_header_v1_bytes(client_id=b"kfk")
+        req = _NonFlexibleRequest(make_buffer(raw))
+        assert req.header.client_id == b"kfk"
+
+
+class TestApiResponse:
+    def test_get_bytes_concatenates_header_and_body(self):
+        class _Chunk:
+            def __init__(self, data): self._data = data
+            def get_bytes(self): return self._data
+
+        class _Resp(ApiResponse):
+            pass
+
+        resp = _Resp()
+        resp.header = _Chunk(b"\x00\x00\x00\x01\x00")
+        resp.body = _Chunk(b"\xff\xff")
+        assert resp.get_bytes() == b"\x00\x00\x00\x01\x00\xff\xff"
+
+    def test_get_size_matches_bytes_length(self):
+        class _Chunk:
+            def __init__(self, data): self._data = data
+            def get_bytes(self): return self._data
+
+        class _Resp(ApiResponse):
+            pass
+
+        resp = _Resp()
+        resp.header = _Chunk(b"\x00\x00\x00\x05\x00")
+        resp.body = _Chunk(b"\x01\x02\x03")
+        assert resp.get_size() == 8
