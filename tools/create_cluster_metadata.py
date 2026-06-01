@@ -169,6 +169,26 @@ def _batch(base_offset: int, records: list[bytes], timestamp_ms: int | None = No
 # Main
 # ---------------------------------------------------------------------------
 
+def _next_base_offset(path: str) -> int:
+    """Scan all batches in an existing log file and return the next free base offset."""
+    if not os.path.exists(path):
+        return 1
+    with open(path, "rb") as f:
+        data = f.read()
+    offset = 1
+    pos = 0
+    while pos + 12 <= len(data):
+        base_offset = int.from_bytes(data[pos : pos + 8], "big")
+        batch_length = int.from_bytes(data[pos + 8 : pos + 12], "big")
+        record_count_pos = pos + 57
+        if record_count_pos + 4 > len(data):
+            break
+        record_count = int.from_bytes(data[record_count_pos : record_count_pos + 4], "big")
+        offset = base_offset + record_count
+        pos += 8 + 4 + batch_length
+    return offset
+
+
 def generate(topics: list[tuple[str, int]], output_path: str) -> None:
     ts = int(time.time() * 1000)
     batches = []
@@ -197,11 +217,36 @@ def generate(topics: list[tuple[str, int]], output_path: str) -> None:
         print(f"  topic={name!r}  partitions={n}")
 
 
+def append_topics(topics: list[tuple[str, int]], output_path: str) -> None:
+    """Append new topic+partition records to an existing metadata log file."""
+    base_offset = _next_base_offset(output_path)
+    ts = int(time.time() * 1000)
+    batches = []
+
+    for topic_name, num_partitions in topics:
+        name_bytes = topic_name.encode()
+        topic_uuid = uuid_mod.uuid4().bytes
+        records = [_topic_record(name_bytes, topic_uuid)]
+        for p in range(num_partitions):
+            records.append(_partition_record(p, topic_uuid, offset_delta=p + 1))
+        batches.append(_batch(base_offset, records, ts))
+        base_offset += 1 + num_partitions
+
+    with open(output_path, "ab") as f:
+        for batch in batches:
+            f.write(batch)
+
+    print(f"Appended to {output_path} ({sum(len(b) for b in batches)} bytes)")
+    for name, n in topics:
+        print(f"  topic={name!r}  partitions={n}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a KRaft cluster metadata log")
     parser.add_argument("--topic", action="append", dest="topics", metavar="NAME", required=True)
     parser.add_argument("--partitions", action="append", dest="partitions", type=int, metavar="N")
     parser.add_argument("--output", default="/tmp/kraft-combined-logs/__cluster_metadata-0/00000000000000000000.log")
+    parser.add_argument("--append", action="store_true", help="Append to existing file instead of overwriting")
     args = parser.parse_args()
 
     partitions = args.partitions or []
@@ -209,4 +254,8 @@ if __name__ == "__main__":
     while len(partitions) < len(args.topics):
         partitions.append(1)
 
-    generate(list(zip(args.topics, partitions)), args.output)
+    topic_list = list(zip(args.topics, partitions))
+    if args.append:
+        append_topics(topic_list, args.output)
+    else:
+        generate(topic_list, args.output)
