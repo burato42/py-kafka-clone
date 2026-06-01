@@ -135,7 +135,7 @@ def main():
     server.listen()
 
     config = get_config(args.config)
-    cluster_metadata = get_cluster_metadata(args.config)
+    cluster_metadata = get_cluster_metadata(args.config) or ClusterMetadataLogFile([])
     partition_log_dir = config["partition_log_dir"]
     while True:
         socket_obj, details = server.accept()

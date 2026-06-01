@@ -10,7 +10,7 @@ from app.messages.cluster_metadata_log import (
     RecordBatch,
     TopicRecordValue,
 )
-from app.messages.headers import RequestHeader, ResponseHeaderV1
+from app.messages.headers import RequestHeader, ResponseHeaderV0, ResponseHeaderV1
 from app.protocol import (
     Errors,
     WireProtocol,
@@ -153,6 +153,27 @@ class ProduceResponsePartition:
             + self.tag_buffer
         )
 
+    def get_bytes_v2(self) -> bytes:
+        # v2–v4: partition_index(4) error_code(2) base_offset(8) log_append_time(8)
+        return (
+            self.partition_index
+            + self.error_code
+            + self.base_offset
+            + self.log_append_time
+        )
+
+    def get_bytes_v5(self) -> bytes:
+        # v5–v7: + log_start_offset(8)
+        return self.get_bytes_v2() + self.log_start_offset
+
+    def get_bytes_v8(self) -> bytes:
+        # v8: + log_start_offset(8) + record_errors array(4-byte count) + error_message(2-byte len string)
+        return (
+            self.get_bytes_v5()
+            + int_to_bytes(0, 4)          # record_errors: empty array (count=0)
+            + int_to_bytes_signed(-1, 2)  # error_message: null string (-1)
+        )
+
 
 @dataclass
 class ProduceResponseTopic:
@@ -160,13 +181,25 @@ class ProduceResponseTopic:
     partition_responses: list[ProduceResponsePartition]
     tag_buffer: bytes
 
-    def get_bytes(self) -> bytes:
-        result = self.topic_name + int_to_bytes(
-            len(self.partition_responses) + 1, WireProtocol.LENGTH_BYTES
-        )
-        for response in self.partition_responses:
-            result += response.get_bytes()
-        result += self.tag_buffer
+    def get_bytes(self, api_version: int = 9) -> bytes:
+        if api_version >= 9:
+            result = self.topic_name + int_to_bytes(
+                len(self.partition_responses) + 1, WireProtocol.LENGTH_BYTES
+            )
+            for response in self.partition_responses:
+                result += response.get_bytes()
+            result += self.tag_buffer
+        else:
+            name = self.topic_name
+            result = int_to_bytes(len(name), 2) + name
+            result += int_to_bytes(len(self.partition_responses), 4)
+            for response in self.partition_responses:
+                if api_version >= 8:
+                    result += response.get_bytes_v8()
+                elif api_version >= 5:
+                    result += response.get_bytes_v5()
+                else:
+                    result += response.get_bytes_v2()
         return result
 
 
@@ -176,18 +209,49 @@ class ProduceResponseBody:
     responses: list[ProduceResponseTopic]
     tag_buffer: bytes
 
-    def get_bytes(self) -> bytes:
-        result = int_to_bytes(len(self.responses) + 1, WireProtocol.LENGTH_BYTES)
-        for response in self.responses:
-            result += response.get_bytes()
-        result += self.throttle_time + self.tag_buffer
+    def get_bytes(self, api_version: int = 9) -> bytes:
+        if api_version >= 9:
+            result = int_to_bytes(len(self.responses) + 1, WireProtocol.LENGTH_BYTES)
+            for response in self.responses:
+                result += response.get_bytes(api_version=api_version)
+            result += self.throttle_time + self.tag_buffer
+        else:
+            result = int_to_bytes(len(self.responses), 4)
+            for response in self.responses:
+                result += response.get_bytes(api_version=api_version)
+            result += self.throttle_time
         return result
 
 
 @dataclass
 class ProduceResponse(ApiResponse):
-    header: ResponseHeaderV1
+    header: ResponseHeaderV0 | ResponseHeaderV1
     body: ProduceResponseBody
+    api_version: int = 9
+
+    def get_bytes(self) -> bytes:
+        return self.header.get_bytes() + self.body.get_bytes(api_version=self.api_version)
+
+
+def _next_offset(log_path: str) -> int:
+    """Return the next base offset by scanning all batches in the log file."""
+    if not os.path.exists(log_path):
+        return 0
+    with open(log_path, "rb") as f:
+        data = f.read()
+    offset = 0
+    pos = 0
+    while pos + 12 <= len(data):
+        base_offset = int.from_bytes(data[pos : pos + 8], "big")
+        batch_length = int.from_bytes(data[pos + 8 : pos + 12], "big")
+        # record_count is at fixed position: 8+4+4+1+4+2+4+8+8+8+2+4 = 57 bytes into batch
+        record_count_pos = pos + 57
+        if record_count_pos + 4 > len(data):
+            break
+        record_count = int.from_bytes(data[record_count_pos : record_count_pos + 4], "big")
+        offset = base_offset + record_count
+        pos += 8 + 4 + batch_length
+    return offset
 
 
 def handle_produce_request(
@@ -196,6 +260,7 @@ def handle_produce_request(
     partition_log_dir: str,
 ) -> ApiResponse:
     correlation_id = request.header.correlation_id
+    api_version = bytes_to_int(request.header.api_version)
     logger.debug("Handling a produce request")
     topic_uuid_to_name: dict[bytes, bytes] = {}
     valid_partitions: set[tuple[bytes, int]] = set()
@@ -218,7 +283,9 @@ def handle_produce_request(
     for tpc in request.body.topics:
         logger.debug("Processing topic {}", tpc.topic_name)
         topic_name = bytes(tpc.topic_name)
-        topic_name_encoded = encode_uvarint(len(topic_name) + 1) + topic_name
+        topic_name_encoded = (
+            encode_uvarint(len(topic_name) + 1) + topic_name if api_version >= 9 else topic_name
+        )
         partition_responses = []
         for part in tpc.partitions:
             partition_id = bytes_to_int(part.partition_index)
@@ -230,12 +297,22 @@ def handle_produce_request(
                 and (topic_name, partition_id) in valid_partitions
             )
             if is_valid:
-                logger.debug("It's valid")
+                logger.debug("Topic {} and partition {} are valid", topic_name, partition_id)
+                log_dir = f"{partition_log_dir}/{topic_name.decode('utf-8')}-{bytes_to_int(part.partition_index)}"
+                log_path = f"{log_dir}/00000000000000000000.log"
+                os.makedirs(log_dir, exist_ok=True)
+
+                base_offset = _next_offset(log_path)
+                raw = bytearray(part.record_batches_raw)
+                raw[0:8] = base_offset.to_bytes(8, "big")
+                with open(log_path, "ab") as f:
+                    f.write(raw)
+
                 partition_responses.append(
                     ProduceResponsePartition(
                         part.partition_index,
                         int_to_bytes(Errors.NO_ERROR, WireProtocol.ERROR_BYTES),
-                        int_to_bytes(0, 8),
+                        int_to_bytes(base_offset, 8),
                         int_to_bytes_signed(-1, 8),
                         int_to_bytes(0, 8),
                         b"\x00",
@@ -243,15 +320,8 @@ def handle_produce_request(
                         int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
                     )
                 )
-
-                log_dir = f"{partition_log_dir}/{topic_name.decode('utf-8')}-{bytes_to_int(part.partition_index)}"
-                log_path = f"{log_dir}/00000000000000000000.log"
-                os.makedirs(log_dir, exist_ok=True)
-
-                with open(log_path, "ab") as f:
-                    f.write(part.record_batches_raw)
             else:
-                logger.debug("It's invalid :(")
+                logger.debug("Topic {} and partition {} are INVALID", topic_name, partition_id)
                 partition_responses.append(
                     ProduceResponsePartition(
                         part.partition_index,
@@ -274,14 +344,16 @@ def handle_produce_request(
             )
         )
 
+    header = (
+        ResponseHeaderV1(correlation_id, int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES))
+        if api_version >= 9 else ResponseHeaderV0(correlation_id)
+    )
     return ProduceResponse(
-        ResponseHeaderV1(
-            correlation_id,
-            int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
-        ),
+        header,
         ProduceResponseBody(
             int_to_bytes(0, WireProtocol.TIME_BYTES),
             responses,
             int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
         ),
+        api_version=api_version,
     )
