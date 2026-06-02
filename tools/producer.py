@@ -6,7 +6,7 @@ producer = KafkaProducer(bootstrap_servers="localhost:9092", retries=0, max_bloc
 for _ in range(1):
     print("Send")
     try:
-        future = producer.send("grape1", b"another_message")
+        future = producer.send("grape", b"another_message")
         result = future.get(timeout=10)
     except KafkaTimeoutError as e:
         print(f"Topic not found: {e}")

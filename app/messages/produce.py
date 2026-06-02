@@ -20,6 +20,7 @@ from app.protocol import (
     int_to_bytes_signed,
 )
 from app.tools import (
+    log_end_offset,
     read_compact_nullable_string,
     read_compact_string,
     read_uvarint,
@@ -233,26 +234,6 @@ class ProduceResponse(ApiResponse):
         return self.header.get_bytes() + self.body.get_bytes(api_version=self.api_version)
 
 
-def _next_offset(log_path: str) -> int:
-    """Return the next base offset by scanning all batches in the log file."""
-    if not os.path.exists(log_path):
-        return 0
-    with open(log_path, "rb") as f:
-        data = f.read()
-    offset = 0
-    pos = 0
-    while pos + 12 <= len(data):
-        base_offset = int.from_bytes(data[pos : pos + 8], "big")
-        batch_length = int.from_bytes(data[pos + 8 : pos + 12], "big")
-        # record_count is at fixed position: 8+4+4+1+4+2+4+8+8+8+2+4 = 57 bytes into batch
-        record_count_pos = pos + 57
-        if record_count_pos + 4 > len(data):
-            break
-        record_count = int.from_bytes(data[record_count_pos : record_count_pos + 4], "big")
-        offset = base_offset + record_count
-        pos += 8 + 4 + batch_length
-    return offset
-
 
 def handle_produce_request(
     request: ProduceRequest,
@@ -302,7 +283,7 @@ def handle_produce_request(
                 log_path = f"{log_dir}/00000000000000000000.log"
                 os.makedirs(log_dir, exist_ok=True)
 
-                base_offset = _next_offset(log_path)
+                base_offset = log_end_offset(log_path)
                 raw = bytearray(part.record_batches_raw)
                 raw[0:8] = base_offset.to_bytes(8, "big")
                 with open(log_path, "ab") as f:

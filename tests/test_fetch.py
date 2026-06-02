@@ -241,6 +241,7 @@ class TestFetchResponseTopicGetBytes:
     def test_topic_id_at_start(self):
         topic = FetchResponseTopic(
             topic_id=TOPIC_UUID,
+            topic_name=None,
             partitions=[
                 FetchResponsePartition(
                     int_to_bytes(0, 4), int_to_bytes(0, 2),
@@ -249,7 +250,7 @@ class TestFetchResponseTopicGetBytes:
                 )
             ],
         )
-        data = topic.get_bytes()
+        data = topic.get_bytes(api_version=16)
         assert data[:16] == TOPIC_UUID
 
     def test_partition_count_encoded(self):
@@ -261,8 +262,8 @@ class TestFetchResponseTopicGetBytes:
             )
             for i in range(3)
         ]
-        topic = FetchResponseTopic(topic_id=TOPIC_UUID, partitions=partitions)
-        data = topic.get_bytes()
+        topic = FetchResponseTopic(topic_id=TOPIC_UUID, topic_name=None, partitions=partitions)
+        data = topic.get_bytes(api_version=16)
         # count is compact array: len+1, at byte 16
         assert bytes_to_int(data[16:17]) == 3 + 1
 
@@ -310,7 +311,12 @@ class TestHandleFetchRequest:
         log_dir = tmp_path / "test-topic-0"
         log_dir.mkdir()
         log_file = log_dir / "00000000000000000000.log"
-        log_data = b"\xde\xad\xbe\xef"
+        # Minimal valid batch: base_offset=0, batch_length=49, 45 padding bytes,
+        # record_count=1 at byte 57 (pos 0+57), followed by 4 bytes.
+        # Layout: [base_offset:8][batch_length:4][body:49]
+        # record_count sits at body offset 45 (absolute 57): pad 45 bytes then record_count=1
+        body = b"\x00" * 45 + (1).to_bytes(4, "big")
+        log_data = (0).to_bytes(8, "big") + len(body).to_bytes(4, "big") + body
         log_file.write_bytes(log_data)
 
         req = self._make_request(topics=[(TOPIC_UUID, [0])])

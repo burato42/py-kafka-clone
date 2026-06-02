@@ -26,6 +26,7 @@ from app.messages.init_producer_id import (
     InitProducerIdRequest,
     handle_init_producer_id_request,
 )
+from app.messages.list_offsets import ListOffsetsRequest, handle_list_offsets_request
 from app.messages.metadata import MetadataRequest, handle_metadata_request
 from app.messages.produce import handle_produce_request
 from app.messages.headers import RequestHeader
@@ -98,6 +99,10 @@ def process_request(
         case ApiKeyConstants.INIT_PRODUCER_ID:
             payload = handle_init_producer_id_request(
                 cast(InitProducerIdRequest, request)
+            )
+        case ApiKeyConstants.LIST_OFFSETS:
+            payload = handle_list_offsets_request(
+                cast(ListOffsetsRequest, request), cluster_metadata, partition_log_dir
             )
         case ApiKeyConstants.METADATA:
             payload = handle_metadata_request(

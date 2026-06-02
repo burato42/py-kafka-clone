@@ -9,6 +9,7 @@ from app.messages.api_key import (
     describe_topic_partiition_key,
     fetch_key,
     init_producer_id_key,
+    list_offsets_key,
     metadata_key,
     produce_key,
 )
@@ -76,6 +77,7 @@ def handle_api_version_request(request: ApiVersionRequest) -> ApiResponse:
                     describe_topic_partiition_key,
                     fetch_key,
                     init_producer_id_key,
+                    list_offsets_key,
                     metadata_key,
                     produce_key,
                 ],

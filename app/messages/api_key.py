@@ -6,6 +6,7 @@ from app.protocol import int_to_bytes, WireProtocol
 class ApiKeyConstants:
     PRODUCE = 0
     FETCH = 1
+    LIST_OFFSETS = 2
     METADATA = 3
     API_VERSION = 18
     INIT_PRODUCER_ID = 22
@@ -64,5 +65,12 @@ init_producer_id_key = ApiKey(
     int_to_bytes(ApiKeyConstants.INIT_PRODUCER_ID, WireProtocol.REQUEST_API_KEY_BYTES),
     int_to_bytes(0, WireProtocol.REQUEST_API_VERSION_BYTES),
     int_to_bytes(4, WireProtocol.REQUEST_API_VERSION_BYTES),
+    int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
+)
+
+list_offsets_key = ApiKey(
+    int_to_bytes(ApiKeyConstants.LIST_OFFSETS, WireProtocol.REQUEST_API_KEY_BYTES),
+    int_to_bytes(1, WireProtocol.REQUEST_API_VERSION_BYTES),
+    int_to_bytes(5, WireProtocol.REQUEST_API_VERSION_BYTES),
     int_to_bytes(0, WireProtocol.TAG_BUFFER_BYTES),
 )
