@@ -136,7 +136,7 @@ def main():
     parser.add_argument("--config", default="config/dev.json")
     args, _ = parser.parse_known_args()
 
-    server = socket.create_server(("localhost", 9092), reuse_port=True)
+    server = socket.create_server(("0.0.0.0", 9092), reuse_port=True)
     server.listen()
 
     config = get_config(args.config)
