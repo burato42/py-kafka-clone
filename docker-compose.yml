@@ -1,0 +1,16 @@
+services:
+  kafka:
+    build: .
+    ports:
+      - "9092:9092"
+    volumes:
+      - ${KAFKA_DATA_DIR:-kafka-data}:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+volumes:
+  kafka-data:
+    

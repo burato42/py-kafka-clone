@@ -11,6 +11,30 @@ This implementation is based on the ["Build Your Own Kafka" Challenge](https://c
 
 # Running with Docker
 
+The easiest way is with Docker Compose, which encodes the resource limits and
+volume configuration so you don't need to remember `docker run` flags:
+
+```bash
+docker compose up --build
+```
+
+This starts the broker with:
+- Port 9092 forwarded to `localhost:9092`
+- Data persisted in a named volume (`kafka-data`)
+- CPU capped at 1 core and memory at 256 MB (useful for performance testing)
+
+To use a local directory for data instead of the named volume:
+```bash
+KAFKA_DATA_DIR=/absolute/path/to/data docker compose up --build
+```
+
+To confirm the limits are in effect while the container is running:
+```bash
+docker stats
+```
+
+### Manual docker run (alternative)
+
 Build the image:
 ```
 docker build -t kafka-broker .
