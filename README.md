@@ -9,6 +9,21 @@ This implementation is based on the ["Build Your Own Kafka" Challenge](https://c
 - Execute `uv run python -m app.main --config config/local.json` to run the implementation locally
 
 
+# Generate/edit metadata
+`tools/create_cluster_metadata.py` generates a minimal KRaft cluster metadata log file that registers one or more topics so our broker can serve Metadata and Produce requests for them.
+
+The output path is read from a config file (same format used by app.main),
+defaulting to config/local.json. Pass --config to target a different environment.
+
+Usage:
+```bash
+uv run tools/create_cluster_metadata.py --topic grape --partitions 2
+uv run tools/create_cluster_metadata.py --topic grape --partitions 2 --topic pear --partitions 1
+uv run tools/create_cluster_metadata.py --config config/docker.json --topic foo
+uv run tools/create_cluster_metadata.py --output /tmp/my-cluster/meta.log --topic foo
+uv run tools/create_cluster_metadata.py --config config/docker.json --topic foo --append
+```
+
 # Running with Docker
 
 The easiest way is with Docker Compose, which encodes the resource limits and
@@ -58,3 +73,9 @@ To run the tests localy:
 uv run pytest --cov=. --cov-report=html
 ```
 These tests will create a html directory with a coverage report.
+
+# Performance tests
+To run the performance test
+```
+uv run --project tests/perf_tests locust --processes 4 -f tests/perf_tests/locustfile.py
+```

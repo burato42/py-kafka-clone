@@ -1,0 +1,8 @@
+[project]
+name = "kafka-perf-tests"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "kafka-python>=2.3.1",
+    "locust>=2.44.0",
+]

@@ -2,12 +2,18 @@
 Generate a minimal KRaft cluster metadata log file that registers one or more
 topics so our broker can serve Metadata and Produce requests for them.
 
+The output path is read from a config file (same format used by app.main),
+defaulting to config/local.json. Pass --config to target a different environment.
+
 Usage:
     uv run tools/create_cluster_metadata.py --topic grape --partitions 2
     uv run tools/create_cluster_metadata.py --topic grape --partitions 2 --topic pear --partitions 1
+    uv run tools/create_cluster_metadata.py --config config/docker.json --topic foo
     uv run tools/create_cluster_metadata.py --output /tmp/my-cluster/meta.log --topic foo
+    uv run tools/create_cluster_metadata.py --config config/docker.json --topic foo --append
 """
 import argparse
+import json
 import os
 import struct
 import time
@@ -245,17 +251,23 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a KRaft cluster metadata log")
     parser.add_argument("--topic", action="append", dest="topics", metavar="NAME", required=True)
     parser.add_argument("--partitions", action="append", dest="partitions", type=int, metavar="N")
-    parser.add_argument("--output", default="/tmp/kraft-combined-logs/__cluster_metadata-0/00000000000000000000.log")
+    parser.add_argument("--config", default="config/local.json", help="Environment config file (same as app.main)")
+    parser.add_argument("--output", default=None, help="Override output path (bypasses --config)")
     parser.add_argument("--append", action="store_true", help="Append to existing file instead of overwriting")
     args = parser.parse_args()
 
+    if args.output:
+        output_path = args.output
+    else:
+        with open(args.config) as f:
+            output_path = json.load(f)["cluster_metadata_file"]
+
     partitions = args.partitions or []
-    # Pad missing --partitions values with 1
     while len(partitions) < len(args.topics):
         partitions.append(1)
 
     topic_list = list(zip(args.topics, partitions))
     if args.append:
-        append_topics(topic_list, args.output)
+        append_topics(topic_list, output_path)
     else:
-        generate(topic_list, args.output)
+        generate(topic_list, output_path)
