@@ -10,7 +10,7 @@ class KafkaUser(User):
 
     def on_start(self):
         self.producer = KafkaProducer(
-            bootstrap_servers="localhost:9092", 
+            bootstrap_servers="127.0.0.1:9092",
             retries=0, 
             max_block_ms=5000
         )

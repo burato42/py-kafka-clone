@@ -50,7 +50,7 @@ def handle_client(
             reader = Reader(socket_obj)
             try:
                 size, payload = reader.read_full_message()
-            except EOFError:
+            except (EOFError, ConnectionResetError):
                 logger.info("Client {} closed the connection.", details)
                 break
 

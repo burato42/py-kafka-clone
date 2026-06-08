@@ -7,85 +7,23 @@ from app.logging import logger
 from app.protocol import bytes_to_int
 
 
-def read_record(buffer: Buffer) -> RecordBatch:
-    base_offset_raw = buffer.read_bytes(8)
-    batch_length_raw = buffer.read_bytes(4)
-    batch_length = bytes_to_int(batch_length_raw)
-    # batch_length covers bytes from partition_leader_epoch to end of batch
-    batch_end = buffer.position + batch_length
-
-    partition_leader_epoch_raw = buffer.read_bytes(4)
-    magic_byte_raw = buffer.read_bytes(1)
-    crc_raw = buffer.read_bytes(4)
-    attributes_raw = buffer.read_bytes(2)
-    last_offset_delta_raw = buffer.read_bytes(4)
-    base_timestamp_raw = buffer.read_bytes(8)
-    max_timestamp_raw = buffer.read_bytes(8)
-    producer_id_raw = buffer.read_bytes(8)
-    producer_epoch_raw = buffer.read_bytes(2)
-    base_sequence_raw = buffer.read_bytes(4)
-    record_length_raw = buffer.read_bytes(4)
-    record_length = bytes_to_int(record_length_raw)
-    records = []
-    try:
-        for _ in range(record_length):
-            length = buffer.read_varint()
-            attributes = buffer.read_bytes(1)
-            timestamp_delta = buffer.read_varint()
-            offset_delta = buffer.read_varint()
-            key_length = buffer.read_varint()
-            if key_length > 0:
-                buffer.read_bytes(key_length)
-            _ = buffer.read_varint()
-            frame_version = buffer.read_bytes(1)
-            type_raw = buffer.read_bytes(1)
-            value = Value.get(buffer, frame_version, type_raw)
-            headers_array_count = buffer.read_bytes(1)
-            records.append(
-                Record(
-                    length,
-                    attributes,
-                    timestamp_delta,
-                    offset_delta,
-                    b"",
-                    value,
-                    headers_array_count,
-                )
-            )
-    except Exception as e:
-        logger.error("Didn't manage to parse all the arguments: {}", e)
-    finally:
-        # Always advance to exact end of batch regardless of parse errors
-        buffer.position = batch_end
-
-    return RecordBatch(
-        base_offset_raw,
-        batch_length_raw,
-        partition_leader_epoch_raw,
-        magic_byte_raw,
-        crc_raw,
-        attributes_raw,
-        last_offset_delta_raw,
-        base_timestamp_raw,
-        max_timestamp_raw,
-        producer_id_raw,
-        producer_epoch_raw,
-        base_sequence_raw,
-        records,
-    )
-
-
-def read_cluster_metadata_log(buffer: Buffer) -> ClusterMetadataLogFile:
-    batches = []
-    while buffer.position < buffer.message_size:
-        batches.append(read_record(buffer))
-
-    return ClusterMetadataLogFile(batches)
+RecordValue = Union[
+    "FeatureLevelRecordValue",
+    "TopicRecordValue",
+    "PartitionRecordValue",
+    "UnregisterBrokerRecordValue",
+]
 
 
 @dataclass
-class ClusterMetadataLogFile:
-    record_batches: list[RecordBatch]
+class Record:
+    length: int
+    attributes: bytes
+    timestamp_delta: int
+    offset_delta: int
+    key: bytes
+    value: RecordValue
+    headers_array_count: bytes
 
 
 @dataclass
@@ -106,23 +44,9 @@ class RecordBatch:
     records: list[Record]
 
 
-RecordValue = Union[
-    "FeatureLevelRecordValue",
-    "TopicRecordValue",
-    "PartitionRecordValue",
-    "UnregisterBrokerRecordValue",
-]
-
-
 @dataclass
-class Record:
-    length: int
-    attributes: bytes
-    timestamp_delta: int
-    offset_delta: int
-    key: bytes
-    value: RecordValue
-    headers_array_count: bytes
+class ClusterMetadataLogFile:
+    record_batches: list[RecordBatch]
 
 
 class Value:
@@ -296,6 +220,82 @@ class UnregisterBrokerRecordValue:
             broker_epoch,
             tagged_fields_count,
         )
+
+
+def read_record(buffer: Buffer) -> RecordBatch:
+    base_offset_raw = buffer.read_bytes(8)
+    batch_length_raw = buffer.read_bytes(4)
+    batch_length = bytes_to_int(batch_length_raw)
+    # batch_length covers bytes from partition_leader_epoch to end of batch
+    batch_end = buffer.position + batch_length
+
+    partition_leader_epoch_raw = buffer.read_bytes(4)
+    magic_byte_raw = buffer.read_bytes(1)
+    crc_raw = buffer.read_bytes(4)
+    attributes_raw = buffer.read_bytes(2)
+    last_offset_delta_raw = buffer.read_bytes(4)
+    base_timestamp_raw = buffer.read_bytes(8)
+    max_timestamp_raw = buffer.read_bytes(8)
+    producer_id_raw = buffer.read_bytes(8)
+    producer_epoch_raw = buffer.read_bytes(2)
+    base_sequence_raw = buffer.read_bytes(4)
+    record_length_raw = buffer.read_bytes(4)
+    record_length = bytes_to_int(record_length_raw)
+    records = []
+    try:
+        for _ in range(record_length):
+            length = buffer.read_varint()
+            attributes = buffer.read_bytes(1)
+            timestamp_delta = buffer.read_varint()
+            offset_delta = buffer.read_varint()
+            key_length = buffer.read_varint()
+            if key_length > 0:
+                buffer.read_bytes(key_length)
+            _ = buffer.read_varint()
+            frame_version = buffer.read_bytes(1)
+            type_raw = buffer.read_bytes(1)
+            value = Value.get(buffer, frame_version, type_raw)
+            headers_array_count = buffer.read_bytes(1)
+            records.append(
+                Record(
+                    length,
+                    attributes,
+                    timestamp_delta,
+                    offset_delta,
+                    b"",
+                    value,
+                    headers_array_count,
+                )
+            )
+    except Exception as e:
+        logger.error("Didn't manage to parse all the arguments: {}", e)
+    finally:
+        # Always advance to exact end of batch regardless of parse errors
+        buffer.position = batch_end
+
+    return RecordBatch(
+        base_offset_raw,
+        batch_length_raw,
+        partition_leader_epoch_raw,
+        magic_byte_raw,
+        crc_raw,
+        attributes_raw,
+        last_offset_delta_raw,
+        base_timestamp_raw,
+        max_timestamp_raw,
+        producer_id_raw,
+        producer_epoch_raw,
+        base_sequence_raw,
+        records,
+    )
+
+
+def read_cluster_metadata_log(buffer: Buffer) -> ClusterMetadataLogFile:
+    batches = []
+    while buffer.position < buffer.message_size:
+        batches.append(read_record(buffer))
+
+    return ClusterMetadataLogFile(batches)
 
 
 def get_config(config_path: str = "config/dev.json") -> dict:
