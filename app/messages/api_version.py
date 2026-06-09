@@ -66,7 +66,7 @@ class ApiVersionResponse(ApiResponse):
 def handle_api_version_request(request: ApiVersionRequest) -> ApiResponse:
     header: RequestHeader = request.header
     correlation_id = header.correlation_id
-    logger.info("Received API Version request from client ID: {}", header.client_id)
+    logger.debug("Received API Version request from client ID: {}", header.client_id)
     if 11 >= bytes_to_int(header.api_version) >= 0:
         payload = ApiVersionResponse(
             ResponseHeaderV0(correlation_id),

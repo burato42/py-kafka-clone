@@ -79,7 +79,7 @@ def process_request(
         logger.error("Unknown API key {}", api_key)
         return
 
-    logger.info("Request API key: {}; Request type: {}", api_key, APIKEYS[api_key])
+    logger.debug("Request API key: {}; Request type: {}", api_key, APIKEYS[api_key])
     kls = APIKEYS[api_key]
     request = kls(buffer)
     header: RequestHeader = request.header

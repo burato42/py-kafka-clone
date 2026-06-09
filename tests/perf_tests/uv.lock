@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-06-01T10:52:15.323233Z"
+exclude-newer = "2026-06-02T12:50:26.246805Z"
 exclude-newer-span = "P1W"
 
 [[package]]

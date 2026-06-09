@@ -175,3 +175,7 @@ cython_debug/
 
 # Local data files (keep directory structure, ignore log files)
 data/**/*.log
+
+# Project
+.DS_Store
+profile.svg
