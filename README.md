@@ -79,3 +79,19 @@ To run the performance test
 ```
 uv run --project tests/perf_tests locust --processes 4 -f tests/perf_tests/locustfile.py
 ```
+
+# Benchmarks
+Benchmarks are on a very initail stage.
+The script `./tools/start.sh` will delete the old corresponding metadata, create new files, run the broker and the consumer.
+Usage:
+```bash
+# defaults: topic=grape, partitions=2, config=config/local.json
+./tools/start.sh
+
+# custom
+./tools/start.sh grape 4
+./tools/start.sh grape 4 config/docker.json
+```
+
+
+`/benchmarks/producer_by_partitions.png` contains a serie of tests using 100 concurrent users with different number of corresponding partitions (1, 2, 5 and 10). The test is done on MacBook Pro M1 with 16GB of memory without any specific limitations.
