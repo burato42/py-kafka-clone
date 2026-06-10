@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+import asyncio
 
 import pytest
 
@@ -6,48 +6,45 @@ from app.connection import Reader
 from tests.conftest import make_buffer
 
 
+def _make_stream(*chunks: bytes) -> asyncio.StreamReader:
+    stream = asyncio.StreamReader()
+    for chunk in chunks:
+        stream.feed_data(chunk)
+    stream.feed_eof()
+    return stream
+
+
+@pytest.mark.asyncio
 class TestReader:
-    def _make_socket(self, chunks: list[bytes]) -> MagicMock:
-        sock = MagicMock()
-        sock.recv.side_effect = chunks
-        return sock
-
-    def test_reads_full_message_single_recv(self):
-        # 4-byte size prefix (value=5) followed by 5-byte payload, each in one recv
-        size_bytes = (5).to_bytes(4, "big")
+    async def test_reads_full_message(self):
         payload = b"hello"
-        sock = self._make_socket([size_bytes, payload])
-        reader = Reader(sock)
-        size, data = reader.read_full_message()
+        stream = _make_stream((5).to_bytes(4, "big"), payload)
+        size, data = await Reader(stream).read_full_message()
         assert size == 5
-        assert data == bytearray(payload)
+        assert data == payload
 
-    def test_reads_full_message_fragmented_recv(self):
-        # Size arrives in two fragments, then payload in two fragments
-        size_bytes = (4).to_bytes(4, "big")
-        sock = self._make_socket(
-            [size_bytes[:2], size_bytes[2:], b"ab", b"cd"]
-        )
-        reader = Reader(sock)
-        size, data = reader.read_full_message()
-        assert size == 4
-        assert data == bytearray(b"abcd")
+    async def test_reads_full_message_single_feed(self):
+        # size prefix and payload arrive in one chunk (common in practice)
+        payload = b"world"
+        combined = (5).to_bytes(4, "big") + payload
+        stream = _make_stream(combined)
+        size, data = await Reader(stream).read_full_message()
+        assert size == 5
+        assert data == payload
 
-    def test_raises_eof_when_socket_closed_during_size(self):
-        sock = MagicMock()
-        sock.recv.return_value = b""  # closed immediately
-        reader = Reader(sock)
-        with pytest.raises(EOFError):
-            reader.read_full_message()
+    async def test_raises_on_eof_during_size(self):
+        stream = asyncio.StreamReader()
+        stream.feed_eof()
+        with pytest.raises(asyncio.IncompleteReadError):
+            await Reader(stream).read_full_message()
 
-    def test_raises_eof_when_socket_closed_during_payload(self):
-        size_bytes = (10).to_bytes(4, "big")
-        sock = MagicMock()
-        # First call returns the size, second returns empty (closed)
-        sock.recv.side_effect = [size_bytes, b""]
-        reader = Reader(sock)
-        with pytest.raises(EOFError):
-            reader.read_full_message()
+    async def test_raises_on_eof_during_payload(self):
+        # Send size prefix but close before the payload arrives
+        stream = asyncio.StreamReader()
+        stream.feed_data((10).to_bytes(4, "big"))
+        stream.feed_eof()
+        with pytest.raises(asyncio.IncompleteReadError):
+            await Reader(stream).read_full_message()
 
 
 class TestBufferInit:

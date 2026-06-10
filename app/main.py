@@ -1,6 +1,5 @@
 import argparse
-import socket
-import threading
+import asyncio
 from typing import cast
 
 from app.connection import Reader, Buffer
@@ -38,35 +37,37 @@ from app.protocol import (
 )
 
 
-def handle_client(
-    socket_obj: socket.socket,
-    details: tuple,
+async def handle_client(
+    reader_stream: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
     cluster_metadata: ClusterMetadataLogFile,
     partition_log_dir: str,
 ):
+    details = writer.get_extra_info("peername")
     logger.info("Connection accepted from {}", details)
+    reader = Reader(reader_stream)
     try:
         while True:
-            reader = Reader(socket_obj)
             try:
-                size, payload = reader.read_full_message()
-            except (EOFError, ConnectionResetError):
+                size, payload = await reader.read_full_message()
+            except (EOFError, ConnectionResetError, asyncio.IncompleteReadError):
                 logger.info("Client {} closed the connection.", details)
                 break
 
             buffer = Buffer(size, payload)
             logger.debug("Received {} bytes: {}", size, payload.hex())
-            process_request(socket_obj, buffer, cluster_metadata, partition_log_dir)
+            await process_request(writer, buffer, cluster_metadata, partition_log_dir)
 
     except Exception as e:
         logger.exception("Error handling client {}: {}", details, e)
     finally:
-        socket_obj.close()
+        writer.close()
+        await writer.wait_closed()
         logger.info("Connection to {} closed", details)
 
 
-def process_request(
-    socket_obj: socket.socket,
+async def process_request(
+    writer: asyncio.StreamWriter,
     buffer: Buffer,
     cluster_metadata: ClusterMetadataLogFile,
     partition_log_dir: str,
@@ -128,7 +129,8 @@ def process_request(
         + payload.get_bytes()
     )
     logger.debug("Sending {} bytes: {}", len(response_bytes), response_bytes.hex())
-    socket_obj.sendall(response_bytes)
+    writer.write(response_bytes)
+    await writer.drain()
 
 
 def main():
@@ -136,22 +138,20 @@ def main():
     parser.add_argument("--config", default="config/dev.json")
     args, _ = parser.parse_known_args()
 
-    server = socket.create_server(("0.0.0.0", 9092), reuse_port=True)
-    server.listen()
-
     config = get_config(args.config)
     cluster_metadata = get_cluster_metadata(args.config) or ClusterMetadataLogFile([])
     partition_log_dir = config["partition_log_dir"]
-    while True:
-        socket_obj, details = server.accept()
-        logger.info("Connection accepted...client details: {}", details)
 
-        client_thread = threading.Thread(
-            target=handle_client,
-            args=(socket_obj, details, cluster_metadata, partition_log_dir),
-            daemon=True,
+    async def _serve():
+        server = await asyncio.start_server(
+            lambda reader, writer: handle_client(reader, writer, cluster_metadata, partition_log_dir),
+            "0.0.0.0",
+            9092,
         )
-        client_thread.start()
+        async with server:
+            await server.serve_forever()
+
+    asyncio.run(_serve())
 
 
 if __name__ == "__main__":

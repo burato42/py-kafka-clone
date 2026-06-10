@@ -1,25 +1,22 @@
-from socket import socket
+import asyncio
 
 from app.protocol import WireProtocol
 
 
 class Reader:
-    def __init__(self, socket_obj: socket):
-        self.socket_obj = socket_obj
+    def __init__(self, stream: asyncio.StreamReader):
+        self.stream = stream
 
-    def read_full_message(self) -> tuple[int, bytes]:
-        raw_size = self._recv_all(WireProtocol.MESSAGE_SIZE_BYTES)
+    async def read_full_message(self) -> tuple[int, bytes]:
+        raw_size = await self._read_exactly(WireProtocol.MESSAGE_SIZE_BYTES)
         message_size = int.from_bytes(raw_size, "big")
-        payload = self._recv_all(message_size)
+        payload = await self._read_exactly(message_size)
         return message_size, payload
 
-    def _recv_all(self, n: int) -> bytes:
-        data = bytearray()
-        while len(data) < n:
-            packet = self.socket_obj.recv(n - len(data))
-            if not packet:
-                raise EOFError("Socket closed before all bytes were read")
-            data.extend(packet)
+    async def _read_exactly(self, n: int) -> bytes:
+        data = await self.stream.readexactly(n)
+        if not data:
+            raise EOFError("Socket closed before all bytes were read")
         return data
 
 

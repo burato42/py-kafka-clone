@@ -70,7 +70,7 @@ The broker listens on port 9092. Connect clients to `localhost:9092` as usual.
 # Testing
 To run the tests localy:
 ```
-uv run pytest --cov=. --cov-report=html
+uv run --dev pytest --cov=. --cov-report=html
 ```
 These tests will create a html directory with a coverage report.
 
